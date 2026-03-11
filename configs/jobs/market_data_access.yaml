@@ -39,7 +39,7 @@ profiles:
     email_notifications: false
   # VM Postgres.
   vm:
-    db_url: postgresql://price_data:strongpass@127.0.0.1:5432/ohlcv
+    db_url: postgresql://price_data:strongpass@127.0.0.1:5432/ohlcv_price_data_infra
 api:
   url_template: https://data-api.coindesk.com/index/cc/v1/historical/{granularity}
   market: ccix
