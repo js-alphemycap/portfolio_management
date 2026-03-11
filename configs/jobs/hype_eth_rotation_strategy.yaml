@@ -1,6 +1,6 @@
 # HYPE/ETH rotation strategy signal config.
 close_hour: 12
-start_date: "2022-01-01T00:00:00+00:00"
+start_date: "2024-01-01T00:00:00+00:00"
 
 pair:
   hype_symbol: HYPE-USD
@@ -9,15 +9,15 @@ pair:
 signal:
   fast_span: 7
   slow_span: 14
-  return_window: 1
+  entry_return_window: 0
+  exit_return_window: 0
 
 execution:
   lag_bars: 1
 
 rsi:
   period: 14
-  long_exit_level: 65
-  short_exit_level: 35
+  exit_level: 67.5
   use_early_exit: true
 
 costs:

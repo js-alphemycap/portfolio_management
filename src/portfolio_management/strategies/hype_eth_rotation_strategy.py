@@ -21,10 +21,10 @@ class HypeEthRotationConfig:
     fast_span: int
     slow_span: int
     execution_lag_bars: int
-    signal_return_window: int
+    entry_signal_return_window: int
+    exit_signal_return_window: int
     rsi_period: int
-    rsi_long_exit_level: float
-    rsi_short_exit_level: float
+    rsi_exit_level: float
     use_rsi_early_exit: bool
     trading_fee_bps_per_leg: float
     slippage_bps_per_leg: float
@@ -40,6 +40,8 @@ class HypeEthRotationSnapshot:
     ratio_close: float
     price_ratio_close: float
     ratio_return_window: float | None
+    ratio_ret_entry_window: float | None
+    ratio_ret_exit_window: float | None
     ema_fast: float
     ema_slow: float
     ema_fast_prev: float | None
@@ -50,8 +52,7 @@ class HypeEthRotationSnapshot:
     price_ratio_ema_slow_prev: float | None
     rsi: float
     rsi_prev: float | None
-    desired_side: float
-    side_filtered: float
+    base_target_signal: float
     alloc_signal: float
     alloc_after_lag: float
     in_position: bool
@@ -130,18 +131,18 @@ def load_hype_eth_rotation_config(raw: Mapping[str, Any]) -> HypeEthRotationConf
         fast_span=_as_int(signal.get("fast_span", 7), name="signal.fast_span"),
         slow_span=_as_int(signal.get("slow_span", 14), name="signal.slow_span"),
         execution_lag_bars=_as_int(execution.get("lag_bars", 1), name="execution.lag_bars"),
-        signal_return_window=_as_int(
-            signal.get("return_window", 1),
-            name="signal.return_window",
+        entry_signal_return_window=_as_int(
+            signal.get("entry_return_window", signal.get("return_window", 0)),
+            name="signal.entry_return_window",
+        ),
+        exit_signal_return_window=_as_int(
+            signal.get("exit_return_window", signal.get("return_window", 0)),
+            name="signal.exit_return_window",
         ),
         rsi_period=_as_int(rsi.get("period", 14), name="rsi.period"),
-        rsi_long_exit_level=_as_float(
-            rsi.get("long_exit_level", 60),
-            name="rsi.long_exit_level",
-        ),
-        rsi_short_exit_level=_as_float(
-            rsi.get("short_exit_level", 40),
-            name="rsi.short_exit_level",
+        rsi_exit_level=_as_float(
+            rsi.get("exit_level", rsi.get("long_exit_level", 67.5)),
+            name="rsi.exit_level",
         ),
         use_rsi_early_exit=_as_bool(
             rsi.get("use_early_exit", True),
@@ -166,11 +167,39 @@ def _compute_rsi(series: pd.Series, period: int) -> pd.Series:
     delta = series.diff()
     gain = delta.clip(lower=0.0)
     loss = -delta.clip(upper=0.0)
-    avg_gain = gain.ewm(alpha=1.0 / period, adjust=False, min_periods=period).mean()
-    avg_loss = loss.ewm(alpha=1.0 / period, adjust=False, min_periods=period).mean()
-    rs = avg_gain / avg_loss.replace(0.0, pd.NA)
-    out = 100.0 - (100.0 / (1.0 + rs))
-    return out.fillna(50.0)
+    avg_gain = _rma_tv(gain, period)
+    avg_loss = _rma_tv(loss, period)
+
+    rsi = pd.Series(index=series.index, dtype="float64")
+    down_zero = avg_loss == 0
+    up_zero = avg_gain == 0
+    both_ready = avg_gain.notna() & avg_loss.notna()
+
+    rsi.loc[both_ready & down_zero] = 100.0
+    rsi.loc[both_ready & ~down_zero & up_zero] = 0.0
+
+    core_mask = both_ready & ~down_zero & ~up_zero
+    rs = avg_gain.loc[core_mask] / avg_loss.loc[core_mask]
+    rsi.loc[core_mask] = 100.0 - (100.0 / (1.0 + rs))
+    return rsi
+
+
+def _rma_tv(series: pd.Series, period: int) -> pd.Series:
+    values = series.astype(float)
+    out = pd.Series(index=values.index, dtype="float64")
+    valid = values.dropna()
+    if len(valid) < period:
+        return out
+
+    seed = float(valid.iloc[:period].mean())
+    seed_idx = valid.index[period - 1]
+    out.loc[seed_idx] = seed
+
+    prev = seed
+    for idx, value in valid.iloc[period:].items():
+        prev = ((period - 1) * prev + float(value)) / period
+        out.loc[idx] = prev
+    return out
 
 
 def _lookup_price(series: pd.Series, ts: pd.Timestamp) -> float:
@@ -243,9 +272,15 @@ def generate_hype_eth_rotation_snapshot(
     eth_eq = (eth / float(eth.iloc[0])).rename("eth_equity")
     ratio = (hype_eq / eth_eq).rename("hype_eth_ratio")
 
-    ratio_return_window = ratio.pct_change(config.signal_return_window)
-    if config.signal_return_window == 0:
-        ratio_return_window = pd.Series(0.0, index=ratio.index, dtype=float)
+    if config.entry_signal_return_window == 0:
+        ratio_ret_entry_window = pd.Series(0.0, index=ratio.index, dtype=float)
+    else:
+        ratio_ret_entry_window = ratio.pct_change(config.entry_signal_return_window)
+
+    if config.exit_signal_return_window == 0:
+        ratio_ret_exit_window = pd.Series(0.0, index=ratio.index, dtype=float)
+    else:
+        ratio_ret_exit_window = ratio.pct_change(config.exit_signal_return_window)
 
     ema_fast = ratio.ewm(
         span=config.fast_span,
@@ -268,46 +303,65 @@ def generate_hype_eth_rotation_snapshot(
         min_periods=config.slow_span,
     ).mean()
 
-    desired_side = pd.Series(1.0, index=ratio.index, dtype=float)
-    desired_side.loc[ema_fast <= ema_slow] = -1.0
-
-    side_filtered = pd.Series(0.0, index=ratio.index, dtype=float)
+    base_target_signal = pd.Series(0.0, index=ratio.index, dtype=float)
     current = 1.0
     for ts in ratio.index:
-        desired = float(desired_side.loc[ts])
-        rw = ratio_return_window.loc[ts]
-        if config.signal_return_window == 0:
-            can_flip_long = True
-            can_flip_short = True
-        else:
-            can_flip_long = pd.notna(rw) and float(rw) > 0.0
-            can_flip_short = pd.notna(rw) and float(rw) < 0.0
-        if desired != current:
-            if desired > 0.0 and can_flip_long:
-                current = 1.0
-            elif desired < 0.0 and can_flip_short:
-                current = -1.0
-        side_filtered.loc[ts] = current
+        spread = float(ema_fast.loc[ts] - ema_slow.loc[ts]) if pd.notna(ema_fast.loc[ts]) and pd.notna(ema_slow.loc[ts]) else float("nan")
+        rw_entry = ratio_ret_entry_window.loc[ts]
+        rw_exit = ratio_ret_exit_window.loc[ts]
+        if pd.isna(spread):
+            base_target_signal.loc[ts] = current
+            continue
+
+        can_enter_target = (
+            config.entry_signal_return_window == 0
+            or (pd.notna(rw_entry) and float(rw_entry) > 0.0)
+        )
+        can_exit_target = (
+            config.exit_signal_return_window == 0
+            or (pd.notna(rw_exit) and float(rw_exit) < 0.0)
+        )
+
+        if current <= 0.0 and spread > 0.0 and can_enter_target:
+            current = 1.0
+        elif current > 0.0 and spread < 0.0 and can_exit_target:
+            current = 0.0
+        base_target_signal.loc[ts] = current
 
     rsi = _compute_rsi(ratio, config.rsi_period)
-    early_exit_long = (rsi.shift(1) > config.rsi_long_exit_level) & (rsi <= config.rsi_long_exit_level)
-    early_exit_short = (rsi.shift(1) < config.rsi_short_exit_level) & (rsi >= config.rsi_short_exit_level)
-    signal_flip_event = side_filtered != side_filtered.shift(1)
+    rsi_exit_armed = pd.Series(False, index=ratio.index, dtype=bool)
+    early_exit_target = pd.Series(False, index=ratio.index, dtype=bool)
+    rsi_armed = False
+    prev_base_target = base_target_signal.shift(1)
+    for ts in ratio.index:
+        prev_target = prev_base_target.loc[ts]
+        rsi_now = rsi.loc[ts]
+
+        if pd.isna(prev_target) or float(prev_target) <= 0.0:
+            rsi_armed = False
+
+        if pd.notna(rsi_now) and pd.notna(prev_target) and float(prev_target) > 0.0:
+            if float(rsi_now) >= config.rsi_exit_level:
+                rsi_armed = True
+            if rsi_armed and float(rsi_now) <= config.rsi_exit_level:
+                early_exit_target.loc[ts] = True
+                rsi_armed = False
+
+        rsi_exit_armed.loc[ts] = rsi_armed
+
+    signal_flip_event = base_target_signal != base_target_signal.shift(1)
 
     if config.use_rsi_early_exit:
         alloc_signal = pd.Series(0.0, index=ratio.index, dtype=float)
         current_pos = 1.0
         for ts in ratio.index:
             if bool(signal_flip_event.loc[ts]):
-                current_pos = float(side_filtered.loc[ts])
-            else:
-                if current_pos == 1.0 and bool(early_exit_long.loc[ts]):
-                    current_pos = 0.0
-                elif current_pos == -1.0 and bool(early_exit_short.loc[ts]):
-                    current_pos = 0.0
+                current_pos = float(base_target_signal.loc[ts])
+            elif current_pos > 0.0 and bool(early_exit_target.loc[ts]):
+                current_pos = 0.0
             alloc_signal.loc[ts] = current_pos
     else:
-        alloc_signal = side_filtered.copy()
+        alloc_signal = base_target_signal.copy()
 
     alloc_after_lag = alloc_signal.shift(config.execution_lag_bars).bfill().fillna(1.0)
 
@@ -316,11 +370,15 @@ def generate_hype_eth_rotation_snapshot(
     trigger_today = bool(abs(float(alloc_after_lag.loc[as_of] - alloc_after_lag.loc[prev_as_of])) > 1e-12) if prev_as_of is not None else False
 
     signal_flip_today = bool(signal_flip_event.loc[as_of])
-    early_exit_today = bool(early_exit_long.loc[as_of] or early_exit_short.loc[as_of])
+    early_exit_today = bool(early_exit_target.loc[as_of])
+    rw_entry_now = ratio_ret_entry_window.loc[as_of]
+    rw_exit_now = ratio_ret_exit_window.loc[as_of]
     entry_filter_ok_today = True
-    rw_now = ratio_return_window.loc[as_of]
-    if config.signal_return_window > 0:
-        entry_filter_ok_today = bool(pd.notna(rw_now) and float(rw_now) > 0.0)
+    if config.entry_signal_return_window > 0:
+        entry_filter_ok_today = bool(pd.notna(rw_entry_now) and float(rw_entry_now) > 0.0)
+    exit_filter_ok_today = True
+    if config.exit_signal_return_window > 0:
+        exit_filter_ok_today = bool(pd.notna(rw_exit_now) and float(rw_exit_now) < 0.0)
 
     signal_pos_now = bool(float(alloc_after_lag.loc[as_of]) > 0.0)
     log_events, log_warnings = load_hype_eth_trade_log(
@@ -386,7 +444,9 @@ def generate_hype_eth_rotation_snapshot(
         eth_close=float(eth.loc[as_of]),
         ratio_close=float(ratio.loc[as_of]),
         price_ratio_close=float(price_ratio.loc[as_of]),
-        ratio_return_window=float(rw_now) if pd.notna(rw_now) else None,
+        ratio_return_window=float(rw_entry_now) if pd.notna(rw_entry_now) else None,
+        ratio_ret_entry_window=float(rw_entry_now) if pd.notna(rw_entry_now) else None,
+        ratio_ret_exit_window=float(rw_exit_now) if pd.notna(rw_exit_now) else None,
         ema_fast=float(ema_fast.loc[as_of]),
         ema_slow=float(ema_slow.loc[as_of]),
         ema_fast_prev=float(ema_fast.loc[prev_as_of]) if prev_as_of is not None and pd.notna(ema_fast.loc[prev_as_of]) else None,
@@ -395,10 +455,9 @@ def generate_hype_eth_rotation_snapshot(
         price_ratio_ema_slow=float(price_ratio_ema_slow.loc[as_of]),
         price_ratio_ema_fast_prev=float(price_ratio_ema_fast.loc[prev_as_of]) if prev_as_of is not None and pd.notna(price_ratio_ema_fast.loc[prev_as_of]) else None,
         price_ratio_ema_slow_prev=float(price_ratio_ema_slow.loc[prev_as_of]) if prev_as_of is not None and pd.notna(price_ratio_ema_slow.loc[prev_as_of]) else None,
-        rsi=float(rsi.loc[as_of]),
+        rsi=float(rsi.loc[as_of]) if pd.notna(rsi.loc[as_of]) else float("nan"),
         rsi_prev=float(rsi.loc[prev_as_of]) if prev_as_of is not None and pd.notna(rsi.loc[prev_as_of]) else None,
-        desired_side=float(desired_side.loc[as_of]),
-        side_filtered=float(side_filtered.loc[as_of]),
+        base_target_signal=float(base_target_signal.loc[as_of]),
         alloc_signal=float(alloc_signal.loc[as_of]),
         alloc_after_lag=float(alloc_after_lag.loc[as_of]),
         in_position=in_position_from_log,

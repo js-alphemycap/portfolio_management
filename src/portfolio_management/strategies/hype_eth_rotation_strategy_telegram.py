@@ -56,6 +56,7 @@ def build_hype_eth_rotation_telegram_message(
 
     lines.append(f"HYPE/ETH Rotation Signal - {snapshot.as_of.date()}")
     lines.append(divider)
+    lines.append(f"- State: {_position_text(snapshot.in_position)}")
     lines.append(f"- Trigger today: {'YES' if trigger_today else 'NO'}")
     lines.append(f"- Action: {action_text}")
     lines.append(f"- HYPE close: {_fmt_ratio(snapshot.hype_close)}")
@@ -88,7 +89,7 @@ def build_hype_eth_rotation_telegram_message(
         )
         if config.use_rsi_early_exit:
             lines.append(
-                f"- RSI early-exit condition (cross down { _fmt_num(config.rsi_long_exit_level) }): "
+                f"- RSI early-exit condition (cross down { _fmt_num(config.rsi_exit_level) }): "
                 f"{'YES' if snapshot.early_exit_today else 'NO'}"
             )
         lines.append(
@@ -101,10 +102,10 @@ def build_hype_eth_rotation_telegram_message(
             f"- EMA entry condition (fast ratio EMA > slow ratio EMA): "
             f"{'YES' if snapshot.ema_fast > snapshot.ema_slow else 'NO'}"
         )
-        if config.signal_return_window > 0:
+        if config.entry_signal_return_window > 0:
             lines.append(
-                f"- Return filter ({config.signal_return_window}D > 0): "
-                f"{_fmt_pct(snapshot.ratio_return_window)} -> "
+                f"- Entry return filter ({config.entry_signal_return_window}D > 0): "
+                f"{_fmt_pct(snapshot.ratio_ret_entry_window)} -> "
                 f"{'PASS' if snapshot.entry_filter_ok_today else 'BLOCK'}"
             )
         lines.append(
