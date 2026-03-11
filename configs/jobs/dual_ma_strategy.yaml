@@ -1,0 +1,27 @@
+# Reserve portfolio (BTC + ETH) dual-MA strategy parameters.
+close_hour: 12
+start_date: "2021-01-02T00:00:00+00:00"
+
+portfolio:
+  w_ref:
+    BTC: 0.33
+    ETH: 0.67
+  derisk:
+    BTC: 0.50
+    ETH: 0.50
+
+assets:
+  BTC:
+    symbol: BTC-USD
+    params:
+      window_fast: 100
+      window_slow: 350
+      atr_buf: 0.50
+      atr_win: 100
+  ETH:
+    symbol: ETH-USD
+    params:
+      window_fast: 50
+      window_slow: 140
+      atr_buf: 0.20
+      atr_win: 50

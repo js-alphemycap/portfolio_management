@@ -1,0 +1,22 @@
+# Alts SMA monitoring job (email output).
+#
+# For each alt symbol, compute three series:
+#   1) Alt/BTC (close_alt / close_btc)
+#   2) Alt/ETH (close_alt / close_eth)
+#   3) Alt/Cash (close_alt)
+# Then compare the latest value vs its SMA(window) to color a matrix cell.
+# Database settings are sourced from configs/jobs/market_data_access.yaml + JOB_PROFILE.
+
+alts:
+  - LINK-USD
+  - AAVE-USD
+  - UNI-USD
+  - SOL-USD
+  - NEAR-USD
+  - PENDLE-USD
+  - SYRUP-USD
+  - LDO-USD
+
+window: 21
+close_hour: 12
+start_date: "2021-01-01T00:00:00+00:00"

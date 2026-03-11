@@ -1,0 +1,24 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "portfolio_management"
+version = "0.1.0"
+description = "Portfolio management and messaging toolkit built on stored OHLCV data."
+requires-python = ">=3.10"
+dependencies = [
+    "pandas>=2.0",
+    "requests>=2.31",
+    "python-dotenv>=1.0",
+    "msal>=1.25",
+    "PyYAML>=6.0",
+    "psycopg[binary]>=3.1",
+    "matplotlib>=3.8",
+]
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]

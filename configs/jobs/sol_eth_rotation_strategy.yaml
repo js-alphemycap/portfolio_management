@@ -1,0 +1,28 @@
+# SOL/ETH rotation strategy signal config.
+close_hour: 12
+start_date: "2026-02-16T00:00:00+00:00"
+
+pair:
+  sol_symbol: SOL-USD
+  eth_symbol: ETH-USD
+
+signal:
+  fast_span: 9
+  slow_span: 14
+  entry_pos_return_window: 3
+
+execution:
+  lag_bars: 0
+
+review:
+  streak_x: 3
+  q25_backtest_threshold: -0.0462
+
+risk:
+  stop_loss_threshold: 0.30
+
+trade_log:
+  path: configs/state/sol_eth_trade_log.json
+
+telegram:
+  dry_run_chat_id: "1782689756"

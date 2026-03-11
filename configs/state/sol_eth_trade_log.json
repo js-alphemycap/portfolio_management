@@ -1,0 +1,17 @@
+[
+  {
+    "date": "2026-02-21",
+    "event": "ENTRY",
+    "cross_price": 0.04331835
+  },
+  {
+    "date": "2026-02-24",
+    "event": "EXIT",
+    "cross_price": 0.041966
+  },
+  {
+    "date": "2026-03-01",
+    "event": "ENTRY",
+    "cross_price": 0.042912
+  }
+]

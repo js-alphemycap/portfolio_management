@@ -1,0 +1,48 @@
+# Default configuration for the hourly OHLCV ingestion job.
+symbols:
+  - BTC-USD
+  - ETH-USD
+  - SOL-USD
+  - LINK-USD
+  - WLD-USD
+  - AAVE-USD
+  - UNI-USD
+  - MORPHO-USD
+  - JTO-USD
+  - ETHFI-USD
+  - XMR-USD
+  - LDO-USD
+  - SUI-USD
+  - RED-USD
+  - AVAX-USD
+  - PYTH-USD
+  - JUP-USD
+  - HYPE-USD
+  - NEAR-USD
+  - PENDLE-USD
+  - CAKE-USD
+  - SKY-USD
+  - GRT-USD
+  - SYRUP-USD
+  - PUMP-USD
+  - ZEC-USD
+  - HNT-USD
+  - TAO-USD
+granularity: hours
+overlap_days: 2
+db_path: data/databases/ohlcv.db
+email_notifications: true
+profiles:
+  # Local Postgres (matches your daily pg_dump restore target).
+  local:
+    db_url: postgresql://price_data:strongpass@127.0.0.1:5432/ohlcv_local
+    email_notifications: false
+  # VM Postgres.
+  vm:
+    db_url: postgresql://price_data:strongpass@127.0.0.1:5432/ohlcv
+api:
+  url_template: https://data-api.coindesk.com/index/cc/v1/historical/{granularity}
+  market: ccix
+  extra_params:
+    apply_mapping: "true"
+    response_format: JSON

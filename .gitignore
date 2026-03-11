@@ -1,0 +1,30 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+
+# Environments
+.env
+.venv/
+
+# Data artifacts
+data/databases/
+data/logs/
+outputs/
+
+# macOS
+.DS_Store
+
+# SSH keys
+id_ed25519*
+*.pem
+*.key
+
+# SSH keys
+id_ed25519*
+*.pem
+*.key
+
+# CSV
+.csv
