@@ -14,7 +14,12 @@ from portfolio_management.helpers.config import BASE_DIR
 class SolEthTradeEvent:
     date: pd.Timestamp
     event: str
-    cross_price: float
+    sol_price: float
+    eth_price: float
+
+    @property
+    def cross_price(self) -> float:
+        return float(self.sol_price / self.eth_price)
 
 
 def _resolve_path(path: str | Path) -> Path:
@@ -69,25 +74,41 @@ def load_sol_eth_trade_log(
         raise ValueError("Trade log events must be a JSON array.")
 
     events: list[SolEthTradeEvent] = []
+    warnings: list[str] = []
     for i, row in enumerate(raw_events):
         if not isinstance(row, dict):
             raise ValueError(f"Trade log row {i} must be an object.")
         event = str(row.get("event", "")).strip().upper()
         if event not in {"ENTRY", "EXIT"}:
             raise ValueError(f"Trade log row {i} has invalid event={event!r}; expected ENTRY or EXIT.")
-        cross_price = _to_float(row.get("cross_price"), field_name="cross_price")
-        if cross_price <= 0:
-            raise ValueError(f"Trade log row {i} has non-positive cross_price={cross_price!r}.")
+        sol_raw = row.get("sol_price")
+        eth_raw = row.get("eth_price")
+        if sol_raw is not None and eth_raw is not None:
+            sol_price = _to_float(sol_raw, field_name="sol_price")
+            eth_price = _to_float(eth_raw, field_name="eth_price")
+        else:
+            cross_price = _to_float(row.get("cross_price"), field_name="cross_price")
+            if cross_price <= 0:
+                raise ValueError(f"Trade log row {i} has non-positive cross_price={cross_price!r}.")
+            sol_price = float(cross_price)
+            eth_price = 1.0
+            warnings.append(
+                "Trade log uses legacy cross_price-only rows; add sol_price and eth_price for exact sleeve return tracking."
+            )
+        if sol_price <= 0:
+            raise ValueError(f"Trade log row {i} has non-positive sol_price={sol_price!r}.")
+        if eth_price <= 0:
+            raise ValueError(f"Trade log row {i} has non-positive eth_price={eth_price!r}.")
         date = _parse_event_date(row.get("date"), close_hour=close_hour)
         events.append(
             SolEthTradeEvent(
                 date=date,
                 event=event,
-                cross_price=cross_price,
+                sol_price=sol_price,
+                eth_price=eth_price,
             )
         )
 
-    warnings: list[str] = []
     sorted_events = sorted(events, key=lambda e: e.date)
     if sorted_events != events:
         warnings.append("Trade log rows were not sorted by date; sorted in-memory.")
@@ -106,7 +127,7 @@ def load_sol_eth_trade_log(
                 raise ValueError(f"Trade log row {i} has EXIT without a prior ENTRY.")
             in_trade = False
 
-    return events, tuple(warnings)
+    return events, tuple(dict.fromkeys(warnings))
 
 
 def sample_sol_eth_trade_log_json() -> str:
@@ -115,12 +136,14 @@ def sample_sol_eth_trade_log_json() -> str:
         "  {\n"
         '    "date": "2026-02-21",\n'
         '    "event": "ENTRY",\n'
-        '    "cross_price": 0.043338\n'
+        '    "sol_price": 167.42,\n'
+        '    "eth_price": 3863.48\n'
         "  },\n"
         "  {\n"
         '    "date": "2026-02-25",\n'
         '    "event": "EXIT",\n'
-        '    "cross_price": 0.041798\n'
+        '    "sol_price": 153.95,\n'
+        '    "eth_price": 3683.02\n'
         "  }\n"
         "]\n"
     )

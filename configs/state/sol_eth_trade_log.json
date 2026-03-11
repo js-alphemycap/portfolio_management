@@ -2,16 +2,19 @@
   {
     "date": "2026-02-21",
     "event": "ENTRY",
-    "cross_price": 0.04331835
+    "sol_price": 85.2934616543706,
+    "eth_price": 1975.51314730839
   },
   {
     "date": "2026-02-24",
     "event": "EXIT",
-    "cross_price": 0.041966
+    "sol_price": 76.5813270899345,
+    "eth_price": 1823.72109833678
   },
   {
     "date": "2026-03-01",
     "event": "ENTRY",
-    "cross_price": 0.042912
+    "sol_price": 84.8744875524879,
+    "eth_price": 1978.1776391237
   }
 ]

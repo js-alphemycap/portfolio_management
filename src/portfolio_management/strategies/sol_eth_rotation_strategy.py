@@ -491,7 +491,7 @@ def generate_sol_eth_rotation_snapshot(
     prev_three = tuple(reversed(completed[-3:]))
 
     pos_from_log = open_trade is not None
-    if pos_from_log != signal_pos_now:
+    if pos_from_log != signal_pos_now and trigger_today:
         warn = (
             "Reconciliation mismatch: "
             f"log_position={'LONG' if pos_from_log else 'FLAT'} "
