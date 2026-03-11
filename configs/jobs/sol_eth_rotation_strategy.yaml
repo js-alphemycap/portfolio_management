@@ -1,18 +1,24 @@
 # SOL/ETH rotation strategy signal config.
 close_hour: 12
-start_date: "2026-02-16T00:00:00+00:00"
+start_date: "2024-01-01T00:00:00+00:00"
 
 pair:
   sol_symbol: SOL-USD
   eth_symbol: ETH-USD
 
 signal:
-  fast_span: 9
+  fast_span: 7
   slow_span: 14
-  entry_pos_return_window: 3
+  entry_return_window: 0
+  exit_return_window: 0
 
 execution:
-  lag_bars: 0
+  lag_bars: 1
+
+rsi:
+  period: 14
+  exit_level: 67.5
+  use_early_exit: true
 
 review:
   streak_x: 3

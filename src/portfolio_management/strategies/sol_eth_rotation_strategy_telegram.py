@@ -27,7 +27,7 @@ def _fmt_pct(value: float | None, digits: int = 2) -> str:
 
 
 def _position_text(in_position: bool) -> str:
-    return "LONG SOL / SHORT ETH" if in_position else "FLAT (passive ETH)"
+    return "IN TRADE (SOL)" if in_position else "OFF TRADE (ETH)"
 
 
 def build_sol_eth_rotation_telegram_message(
@@ -40,50 +40,92 @@ def build_sol_eth_rotation_telegram_message(
 
     lines.append(f"SOL/ETH Rotation Signal - {snapshot.as_of.date()}")
     lines.append(divider)
-    lines.append("State")
-    lines.append(f"- Position: {_position_text(snapshot.in_position)}")
+    lines.append(f"- State: {_position_text(snapshot.in_position)}")
     lines.append(f"- Trigger today: {'YES' if snapshot.trigger_today else 'NO'}")
+    if snapshot.in_position:
+        action_text = "EXIT TO ETH" if snapshot.trigger_today else "HOLD SOL"
+    else:
+        entry_signal = bool(
+            snapshot.signal_flip_today
+            and snapshot.entry_filter_ok_today
+            and snapshot.ema_fast > snapshot.ema_slow
+            and not (snapshot.review.streak_triggered or snapshot.review.stop_loss_triggered)
+        )
+        action_text = "ENTER SOL TRADE" if entry_signal else "STAY IN ETH"
+    lines.append(f"- Action: {action_text}")
     lines.append(
         f"- Now: SOL {_fmt_price(snapshot.sol_close)} | ETH {_fmt_price(snapshot.eth_close)} | "
         f"Ratio {_fmt_ratio(snapshot.ratio_close)}"
     )
     lines.append(
-        f"- EMA: fast({_config_fast(config)}) {_fmt_ratio(snapshot.ema_fast)} vs "
-        f"slow({_config_slow(config)}) {_fmt_ratio(snapshot.ema_slow)}"
+        f"- Price-ratio EMA today: fast({_config_fast(config)}) {_fmt_ratio(snapshot.price_ratio_ema_fast)} "
+        f"{'>' if snapshot.price_ratio_ema_fast > snapshot.price_ratio_ema_slow else '<='} "
+        f"slow({_config_slow(config)}) {_fmt_ratio(snapshot.price_ratio_ema_slow)}"
     )
+    if snapshot.price_ratio_ema_fast_prev is not None and snapshot.price_ratio_ema_slow_prev is not None:
+        lines.append(
+            f"- Price-ratio EMA yesterday: fast({_config_fast(config)}) {_fmt_ratio(snapshot.price_ratio_ema_fast_prev)} "
+            f"{'>' if snapshot.price_ratio_ema_fast_prev > snapshot.price_ratio_ema_slow_prev else '<='} "
+            f"slow({_config_slow(config)}) {_fmt_ratio(snapshot.price_ratio_ema_slow_prev)}"
+        )
+    if snapshot.rsi_prev is not None:
+        lines.append(
+            f"- RSI({config.rsi_period}) today / yesterday: "
+            f"{snapshot.rsi:.1f} / {snapshot.rsi_prev:.1f}"
+        )
+    else:
+        lines.append(f"- RSI({config.rsi_period}) today: {snapshot.rsi:.1f}")
     lines.append(divider)
     if snapshot.in_position:
-        lines.append("Exit criteria")
-        lines.append(f"- Exit if EMA{config.fast_span} < EMA{config.slow_span}")
-        lines.append(f"- Exit signal today: {'YES' if snapshot.bear_cross_today else 'NO'}")
-    else:
-        lines.append("Entry criteria (both true)")
+        lines.append("Exit Criteria Check")
         lines.append(
-            f"- EMA{config.fast_span} > EMA{config.slow_span}: "
+            f"- EMA exit condition (fast ratio EMA < slow ratio EMA): "
+            f"{'YES' if snapshot.ema_fast < snapshot.ema_slow else 'NO'}"
+        )
+        if config.use_rsi_early_exit:
+            lines.append(
+                f"- RSI early-exit condition (cross down {config.rsi_exit_level:.1f}): "
+                f"{'YES' if snapshot.early_exit_today else 'NO'}"
+            )
+        lines.append(
+            f"- Exit signal today: "
+            f"{'YES' if (snapshot.signal_flip_today or snapshot.early_exit_today) else 'NO'}"
+        )
+    else:
+        lines.append("Entry Criteria Check")
+        lines.append(
+            f"- EMA entry condition (fast ratio EMA > slow ratio EMA): "
             f"{'YES' if (snapshot.ema_fast > snapshot.ema_slow) else 'NO'}"
         )
-        if config.entry_pos_return_window > 0:
+        if config.entry_signal_return_window > 0:
             lines.append(
-                f"- SOL/ETH {config.entry_pos_return_window}D return > 0: "
-                f"{'YES' if snapshot.entry_filter_ok_today else 'NO'}"
+                f"- Entry return filter ({config.entry_signal_return_window}D > 0): "
+                f"{_fmt_pct(snapshot.ratio_ret_entry_window)} -> "
+                f"{'PASS' if snapshot.entry_filter_ok_today else 'BLOCK'}"
             )
-        else:
-            lines.append("- Filter: OFF")
+        lines.append(
+            f"- Entry signal today: "
+            f"{'YES' if (snapshot.signal_flip_today and snapshot.entry_filter_ok_today and snapshot.ema_fast > snapshot.ema_slow and not (snapshot.review.streak_triggered or snapshot.review.stop_loss_triggered)) else 'NO'}"
+        )
     lines.append(divider)
-    lines.append("Current trade")
+    lines.append("Current Trade Return")
     if snapshot.current_trade is None:
-        lines.append("- No open trade")
+        lines.append("- No open SOL trade")
     else:
         current = snapshot.current_trade
         lines.append(
-            f"- Entry: {current.entry_date.date()} | Ratio {_fmt_ratio(current.entry_ratio)}"
+            f"- Entry: {current.entry_date.date()} "
+            f"({current.hold_days} days open)"
         )
         lines.append(
-            f"- Current: {snapshot.as_of.date()} | Ratio {_fmt_ratio(snapshot.ratio_close)}"
+            f"- SOL return: {_fmt_pct(current.exit_sol / current.entry_sol - 1.0)}"
         )
-        lines.append(f"- Return: {_fmt_pct(current.trade_return_abs)}")
+        lines.append(
+            f"- ETH return: {_fmt_pct(current.exit_eth / current.entry_eth - 1.0)}"
+        )
+        lines.append(f"- Relative outperformance: {_fmt_pct(current.trade_return_abs)}")
     lines.append(divider)
-    lines.append("Monitoring status")
+    lines.append("Monitoring Status")
     review = snapshot.review
     q25_text = _fmt_pct(review.q25_tail_threshold) if review.q25_tail_threshold is not None else "NA"
     streak_vals = ", ".join(_fmt_pct(x) for x in review.last_streak_returns) if review.last_streak_returns else "NA"
@@ -97,7 +139,7 @@ def build_sol_eth_rotation_telegram_message(
         f"trigger={'YES' if review.stop_loss_triggered else 'NO'}"
     )
     strategy_ok = not (review.streak_triggered or review.stop_loss_triggered)
-    lines.append(f"- Strategy status: {'OK to run' if strategy_ok else 'NOT OK to run'}")
+    lines.append(f"- Strategy status: {'ON' if strategy_ok else 'OFF'}")
     if snapshot.warnings:
         lines.append(divider)
         lines.append("Warnings")
