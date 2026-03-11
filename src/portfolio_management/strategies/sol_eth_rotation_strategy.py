@@ -482,7 +482,7 @@ def generate_sol_eth_rotation_snapshot(
     trades = _build_trades_from_events(
         events=log_events,
         as_of=pd.Timestamp(as_of),
-        ratio_now=float(ratio.loc[as_of]),
+        ratio_now=float(price_ratio.loc[as_of]),
         sol_prices=sol,
         eth_prices=eth,
     )
