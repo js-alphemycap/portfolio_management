@@ -119,12 +119,18 @@ def build_summary_text(message_date: date) -> str:
         message_date=message_date,
     )
 
-    lines = [f"Daily Strategy Summary — {message_date.isoformat()}", ""]
+    divider = "-" * 26
+    lines = [f"Daily Strategy Summary — {message_date.isoformat()}", "", divider]
     lines.extend(summarize_reserve(reserve))
+    lines.append(divider)
     lines.append("")
     lines.append("Alternative Strategies")
+    lines.append("")
     lines.append(summarize_alt(sol, "SOL/ETH"))
+    lines.append("")
     lines.append(summarize_alt(hype, "HYPE/ETH"))
+    lines.append("")
+    lines.append(divider)
     return "\n".join(lines)
 
 
