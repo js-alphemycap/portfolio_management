@@ -50,9 +50,18 @@ def load_archived_strategy_message(*, strategy_slug: str, message_date: date) ->
     return latest.read_text(encoding="utf-8").strip()
 
 
+def latest_archived_message_date(*, strategy_slug: str) -> date:
+    paths = sorted(ARCHIVE_DIR.glob(f"*_{strategy_slug}.txt"))
+    if not paths:
+        raise FileNotFoundError(f"No archived messages found for strategy={strategy_slug!r}.")
+    latest = max(paths, key=lambda path: path.stat().st_mtime)
+    return date.fromisoformat(latest.name[:10])
+
+
 __all__ = [
     "ARCHIVE_DIR",
     "archive_strategy_message",
     "infer_message_date",
+    "latest_archived_message_date",
     "load_archived_strategy_message",
 ]

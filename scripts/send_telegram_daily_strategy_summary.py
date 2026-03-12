@@ -10,7 +10,10 @@ import os
 import re
 from datetime import date, datetime, timezone
 
-from portfolio_management.message_archive import load_archived_strategy_message
+from portfolio_management.message_archive import (
+    latest_archived_message_date,
+    load_archived_strategy_message,
+)
 
 
 def _extract(pattern: str, text: str) -> str | None:
@@ -167,7 +170,7 @@ def main() -> None:
     message_date = (
         date.fromisoformat(args.date)
         if args.date
-        else datetime.now(timezone.utc).date()
+        else latest_archived_message_date(strategy_slug="reserve_dual_ma")
     )
     summary_text = build_summary_text(message_date)
 
