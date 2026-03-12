@@ -22,7 +22,7 @@ rsi:
 
 review:
   streak_x: 3
-  q25_backtest_threshold: -0.0462
+  q25_backtest_threshold: -0.03467
 
 risk:
   stop_loss_threshold: 0.30
