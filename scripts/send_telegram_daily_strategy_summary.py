@@ -43,9 +43,11 @@ def summarize_reserve(message: str) -> list[str]:
     eth_next = _reserve_next_level(message, "ETH")
     return [
         "Reserve Portfolio",
+        "",
         f"Recommended weights {weights}",
         f"BTC {btc_state} | next {btc_next}",
         f"ETH {eth_state} | next {eth_next}",
+        "",
     ]
 
 
@@ -76,8 +78,22 @@ def _alt_action_label(message: str, title: str) -> str:
     )
 
 
+def _pretty_position(raw: str) -> str:
+    mapping = {
+        "OFF TRADE (ETH)": "Off trade (ETH)",
+        "IN TRADE (SOL)": "In trade (SOL)",
+        "IN TRADE (HYPE)": "In trade (HYPE)",
+        "FULL RISK-OFF": "Full risk-off",
+        "PARTIAL RISK-OFF": "Partial risk-off",
+        "FULL RISK-ON": "Full risk-on",
+        "RE-RISKING ENTRY": "Re-risking entry",
+    }
+    normalized = raw.strip()
+    return mapping.get(normalized.upper(), normalized[:1].upper() + normalized[1:].lower() if normalized.isupper() else normalized)
+
+
 def summarize_alt(message: str, title: str) -> str:
-    position = _extract(r"^- State:\s*(.+)$", message) or "NA"
+    position = _pretty_position(_extract(r"^- State:\s*(.+)$", message) or "NA")
     action = _extract(r"^- Trigger today:\s*(YES|NO)$", message) or "NO"
     trigger = _alt_trigger_summary(message)
     action_label = _alt_action_label(message, title)
