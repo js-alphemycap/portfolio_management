@@ -16,6 +16,7 @@ from price_data_infra.data import fetch_ohlcv
 from portfolio_management.helpers.config import BASE_DIR
 from portfolio_management.helpers.http import get_requests_verify
 from portfolio_management.helpers.job_config import load_job_config
+from portfolio_management.message_archive import archive_strategy_message
 from portfolio_management.strategies.sol_eth_rotation_strategy import (
     generate_sol_eth_rotation_snapshot,
     load_sol_eth_rotation_config,
@@ -161,6 +162,8 @@ def main() -> None:
 
     print("📨 Telegram SOL/ETH rotation strategy message:")
     print(message)
+    archive_path = archive_strategy_message(strategy_slug="sol_eth_rotation", message=message)
+    print(f"🗂️ Archived message -> {archive_path}")
 
     if args.dry_run:
         if not chat_id:

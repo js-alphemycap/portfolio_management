@@ -133,7 +133,10 @@ def build_hype_eth_rotation_telegram_message(
     lines.append(divider)
     lines.append("Monitoring Status")
     lines.append(
-        f"- Stop-loss rule (total relative loss vs ETH): threshold {_fmt_pct(-config.stop_loss_threshold)}, "
+        f"- Cumulative return: {_fmt_pct(snapshot.cumulative_return)}"
+    )
+    lines.append(
+        f"- Stop-loss rule: threshold {_fmt_pct(-config.stop_loss_threshold)}, "
         f"current {_fmt_pct(snapshot.current_loss_historical)}, "
         f"trigger={'YES' if snapshot.stop_loss_triggered else 'NO'}"
     )

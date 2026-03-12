@@ -127,6 +127,9 @@ def build_sol_eth_rotation_telegram_message(
     lines.append(divider)
     lines.append("Monitoring Status")
     review = snapshot.review
+    lines.append(
+        f"- Cumulative return: {_fmt_pct(review.cumulative_return)}"
+    )
     q25_text = _fmt_pct(review.q25_tail_threshold) if review.q25_tail_threshold is not None else "NA"
     streak_vals = ", ".join(_fmt_pct(x) for x in review.last_streak_returns) if review.last_streak_returns else "NA"
     lines.append(

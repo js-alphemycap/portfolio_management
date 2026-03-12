@@ -65,6 +65,7 @@ class HypeEthRotationSnapshot:
     current_trade_hype_return: float | None
     current_trade_eth_return: float | None
     current_trade_relative_outperformance: float | None
+    cumulative_return: float | None
     current_loss_historical: float | None
     max_loss_historical: float | None
     stop_loss_triggered: bool
@@ -238,6 +239,21 @@ def _realized_drawdown_from_trade_returns(
         worst_dd = min(worst_dd, current_dd)
 
     return current_dd, worst_dd
+
+
+def _cumulative_return_from_trade_returns(
+    *,
+    completed_returns: tuple[float, ...],
+    open_trade_mtm_return: float | None,
+) -> float | None:
+    if not completed_returns and open_trade_mtm_return is None:
+        return None
+    equity = 1.0
+    for ret in completed_returns:
+        equity *= 1.0 + float(ret)
+    if open_trade_mtm_return is not None:
+        equity *= 1.0 + float(open_trade_mtm_return)
+    return float(equity - 1.0)
 
 
 def generate_hype_eth_rotation_snapshot(
@@ -433,6 +449,10 @@ def generate_hype_eth_rotation_snapshot(
         completed_returns=tuple(completed_returns),
         open_trade_mtm_return=open_trade_mtm_return,
     )
+    cumulative_return = _cumulative_return_from_trade_returns(
+        completed_returns=tuple(completed_returns),
+        open_trade_mtm_return=open_trade_mtm_return,
+    )
     stop_loss_triggered = bool(
         current_loss_historical is not None and current_loss_historical <= -abs(float(config.stop_loss_threshold))
     )
@@ -470,6 +490,7 @@ def generate_hype_eth_rotation_snapshot(
         current_trade_hype_return=current_trade_hype_return,
         current_trade_eth_return=current_trade_eth_return,
         current_trade_relative_outperformance=current_trade_relative_outperformance,
+        cumulative_return=cumulative_return,
         current_loss_historical=current_loss_historical,
         max_loss_historical=max_loss_historical,
         stop_loss_triggered=stop_loss_triggered,

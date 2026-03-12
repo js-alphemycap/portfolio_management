@@ -15,6 +15,7 @@ from price_data_infra.data import fetch_ohlcv
 from portfolio_management.helpers.config import BASE_DIR
 from portfolio_management.helpers.http import get_requests_verify
 from portfolio_management.helpers.job_config import load_job_config
+from portfolio_management.message_archive import archive_strategy_message
 from portfolio_management.strategies.dual_ma_strategy_reserve_portfolio import (
     generate_reserve_portfolio_dual_ma_telegram_message,
     load_reserve_portfolio_dual_ma_config,
@@ -144,6 +145,8 @@ def main() -> None:
 
     print("📨 Telegram dual MA strategy message:")
     print(message)
+    archive_path = archive_strategy_message(strategy_slug="reserve_dual_ma", message=message)
+    print(f"🗂️ Archived message -> {archive_path}")
 
     if args.dry_run:
         print("Dry-run mode enabled; message not sent.")

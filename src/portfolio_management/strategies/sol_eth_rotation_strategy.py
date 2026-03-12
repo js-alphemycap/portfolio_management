@@ -56,6 +56,7 @@ class SolEthReviewStatus:
     q25_tail_threshold: float | None
     last_streak_returns: tuple[float, ...]
     streak_triggered: bool
+    cumulative_return: float | None
     current_loss_historical: float | None
     max_loss_historical: float | None
     stop_loss_threshold: float
@@ -331,6 +332,21 @@ def _realized_drawdown_from_trade_returns(
     return current_dd, worst_dd
 
 
+def _cumulative_return_from_trade_returns(
+    *,
+    completed_returns: tuple[float, ...],
+    open_trade_mtm_return: float | None,
+) -> float | None:
+    if not completed_returns and open_trade_mtm_return is None:
+        return None
+    equity = 1.0
+    for ret in completed_returns:
+        equity *= 1.0 + float(ret)
+    if open_trade_mtm_return is not None:
+        equity *= 1.0 + float(open_trade_mtm_return)
+    return float(equity - 1.0)
+
+
 def _build_review_status(
     *,
     trades: list[SolEthTrade],
@@ -338,6 +354,7 @@ def _build_review_status(
     review_q25_backtest_threshold: float | None,
     current_loss_historical: float | None,
     max_loss_historical: float | None,
+    cumulative_return: float | None,
     stop_loss_threshold: float,
 ) -> SolEthReviewStatus:
     completed = [trade for trade in trades if trade.completed]
@@ -368,6 +385,7 @@ def _build_review_status(
         q25_tail_threshold=q25,
         last_streak_returns=last_vals,
         streak_triggered=triggered,
+        cumulative_return=cumulative_return,
         current_loss_historical=current_loss_historical,
         max_loss_historical=max_loss_historical,
         stop_loss_threshold=abs(float(stop_loss_threshold)),
@@ -506,12 +524,17 @@ def generate_sol_eth_rotation_snapshot(
         completed_returns=completed_returns,
         open_trade_mtm_return=open_mtm,
     )
+    cumulative_return = _cumulative_return_from_trade_returns(
+        completed_returns=completed_returns,
+        open_trade_mtm_return=open_mtm,
+    )
     review = _build_review_status(
         trades=trades,
         review_streak_x=config.review_streak_x,
         review_q25_backtest_threshold=config.review_q25_backtest_threshold,
         current_loss_historical=current_loss,
         max_loss_historical=max_loss,
+        cumulative_return=cumulative_return,
         stop_loss_threshold=config.stop_loss_threshold,
     )
 

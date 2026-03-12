@@ -12,13 +12,13 @@
     "eth_price": 1822.18287983922
   },
   {
-    "date": "2026-02-24",
+    "date": "2026-03-01",
     "event": "ENTRY",
     "sol_price": 86.4434,
     "eth_price": 2014.4341
   },
   {
-    "date": "2026-03-01",
+    "date": "2026-03-08",
     "event": "EXIT",
     "sol_price": 85.0723,
     "eth_price": 2019.9677
