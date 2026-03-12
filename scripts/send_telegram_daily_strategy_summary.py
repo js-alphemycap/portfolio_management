@@ -136,7 +136,7 @@ def build_summary_text(message_date: date) -> str:
     )
 
     divider = "-" * 26
-    lines = [f"Daily Strategy Summary — {message_date.isoformat()}", "", divider]
+    lines = [f"Daily Strategy Summary — {message_date.isoformat()}", "", divider, ""]
     lines.extend(summarize_reserve(reserve))
     lines.append(divider)
     lines.append("")
