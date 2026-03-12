@@ -167,12 +167,19 @@ def main() -> None:
     parser = build_parser()
     args = parser.parse_args()
 
+    today_utc = datetime.now(timezone.utc).date()
     message_date = (
         date.fromisoformat(args.date)
         if args.date
         else latest_archived_message_date(strategy_slug="reserve_dual_ma")
     )
     summary_text = build_summary_text(message_date)
+    if message_date != today_utc:
+        warning = (
+            f"WARNING: Summary date is {message_date.isoformat()}, "
+            f"not today UTC {today_utc.isoformat()}."
+        )
+        summary_text = warning + "\n\n" + summary_text
 
     print("📨 Telegram daily strategy summary:")
     print(summary_text)
