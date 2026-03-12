@@ -168,18 +168,31 @@ def main() -> None:
     args = parser.parse_args()
 
     today_utc = datetime.now(timezone.utc).date()
-    message_date = (
+    requested_date = (
         date.fromisoformat(args.date)
         if args.date
         else latest_archived_message_date(strategy_slug="reserve_dual_ma")
     )
-    summary_text = build_summary_text(message_date)
+    warning_lines: list[str] = []
+    try:
+        message_date = requested_date
+        summary_text = build_summary_text(message_date)
+    except FileNotFoundError:
+        fallback_date = latest_archived_message_date(strategy_slug="reserve_dual_ma")
+        summary_text = build_summary_text(fallback_date)
+        warning_lines.append(
+            f"WARNING: No archived summary inputs found for requested date {requested_date.isoformat()}; "
+            f"using latest available date {fallback_date.isoformat()}."
+        )
+        message_date = fallback_date
+
     if message_date != today_utc:
-        warning = (
+        warning_lines.append(
             f"WARNING: Summary date is {message_date.isoformat()}, "
             f"not today UTC {today_utc.isoformat()}."
         )
-        summary_text = warning + "\n\n" + summary_text
+    if warning_lines:
+        summary_text = "\n\n".join(warning_lines + [summary_text])
 
     print("📨 Telegram daily strategy summary:")
     print(summary_text)
