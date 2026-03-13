@@ -4,5 +4,11 @@
     "event": "ENTRY",
     "hype_price": 34.09,
     "eth_price": 2025
+  },
+  {
+    "date": "2026-03-13",
+    "event": "EXIT",
+    "hype_price": 37.2426,
+    "eth_price": 2182.85276
   }
 ]
