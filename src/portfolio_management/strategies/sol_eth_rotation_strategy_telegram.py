@@ -38,12 +38,9 @@ def build_sol_eth_rotation_telegram_message(
     lines: list[str] = []
     divider = "-" * 36
 
-    lines.append(f"SOL/ETH Rotation Signal - {snapshot.as_of.date()}")
-    lines.append(divider)
-    lines.append(f"- State: {_position_text(snapshot.in_position)}")
-    lines.append(f"- Trigger today: {'YES' if snapshot.trigger_today else 'NO'}")
     if snapshot.in_position:
-        action_text = "EXIT TO ETH" if snapshot.trigger_today else "HOLD SOL"
+        trigger_today = bool(snapshot.signal_flip_today or snapshot.early_exit_today)
+        action_text = "EXIT TO ETH" if trigger_today else "HOLD SOL"
     else:
         entry_signal = bool(
             snapshot.signal_flip_today
@@ -51,7 +48,13 @@ def build_sol_eth_rotation_telegram_message(
             and snapshot.ema_fast > snapshot.ema_slow
             and not (snapshot.review.streak_triggered or snapshot.review.stop_loss_triggered)
         )
+        trigger_today = entry_signal
         action_text = "ENTER SOL TRADE" if entry_signal else "STAY IN ETH"
+
+    lines.append(f"SOL/ETH Rotation Signal - {snapshot.as_of.date()}")
+    lines.append(divider)
+    lines.append(f"- State: {_position_text(snapshot.in_position)}")
+    lines.append(f"- Trigger today: {'YES' if trigger_today else 'NO'}")
     lines.append(f"- Action: {action_text}")
     lines.append(
         f"- Now: SOL {_fmt_price(snapshot.sol_close)} | ETH {_fmt_price(snapshot.eth_close)} | "

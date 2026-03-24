@@ -50,7 +50,7 @@ def build_hype_eth_rotation_telegram_message(
         trigger_today = entry_signal
         action_text = (
             "ENTER HYPE TRADE"
-            if entry_signal
+            if trigger_today
             else "STAY IN ETH"
         )
 

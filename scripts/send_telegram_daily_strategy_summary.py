@@ -21,18 +21,24 @@ def _extract(pattern: str, text: str) -> str | None:
     return match.group(1).strip() if match else None
 
 
-def _reserve_next_level(message: str, asset: str) -> str:
-    pattern = rf"(?s)--- {asset} ---.*?Watching next\n([^\n]+)"
-    line = _extract(pattern, message)
-    if not line:
-        return "NA"
+def _shorten_reserve_watch_line(line: str) -> str:
     return (
         line.replace("Re-risking Entry if close > ", "> ")
         .replace("Confirm Full Risk-On if close > ", "> ")
+        .replace("Re-confirm Full Risk-On if close > ", "> ")
         .replace("De-risk to Partial Risk-Off if close < ", "< ")
         .replace("Exit to Full Risk-Off if close < ", "< ")
         .replace("Abort to Full Risk-Off if close < ", "< ")
     )
+
+
+def _reserve_next_level(message: str, asset: str) -> str:
+    pattern = rf"(?s)--- {asset} ---.*?Watching next\n(.*?)(?:\n\n--- |\Z)"
+    block = _extract(pattern, message)
+    if not block:
+        return "NA"
+    lines = [_shorten_reserve_watch_line(line.strip()) for line in block.splitlines() if line.strip()]
+    return " / ".join(lines) if lines else "NA"
 
 
 def summarize_reserve(message: str) -> list[str]:
@@ -49,6 +55,14 @@ def summarize_reserve(message: str) -> list[str]:
         f"ETH {eth_state} | next {eth_next}",
         "",
     ]
+
+
+def _reserve_action_summary(message: str) -> str:
+    trigger_today = _extract(r"^Trigger today:\s*(YES|NO)$", message) or "NO"
+    weights = _extract(r"^Target weights:\s*(.+)$", message) or "NA"
+    if trigger_today == "YES":
+        return f"Reserve rebalance to {weights}"
+    return "No action"
 
 
 def _alt_trigger_summary(message: str) -> str:
@@ -121,6 +135,23 @@ def summarize_alt(message: str, title: str) -> str:
     return " | ".join(parts)
 
 
+def _action_header_lines(reserve: str, sol: str, hype: str) -> list[str]:
+    reserve_action = _reserve_action_summary(reserve)
+    sol_action = _alt_action_label(sol, "SOL/ETH")
+    hype_action = _alt_action_label(hype, "HYPE/ETH")
+    has_action = any(
+        action != "No action"
+        for action in (reserve_action, sol_action, hype_action)
+    )
+    return [
+        f"Today's Actions: {'YES' if has_action else 'NO'}",
+        "",
+        f"- Reserve: {reserve_action}",
+        f"- SOL/ETH: {sol_action}",
+        f"- HYPE/ETH: {hype_action}",
+    ]
+
+
 def build_summary_text(message_date: date) -> str:
     reserve = load_archived_strategy_message(
         strategy_slug="reserve_dual_ma",
@@ -136,7 +167,16 @@ def build_summary_text(message_date: date) -> str:
     )
 
     divider = "-" * 26
-    lines = [f"Daily Strategy Summary — {message_date.isoformat()}", "", divider, ""]
+    lines = [
+        f"Daily Strategy Summary — {message_date.isoformat()}",
+        "",
+        divider,
+        "",
+        *_action_header_lines(reserve, sol, hype),
+        "",
+        divider,
+        "",
+    ]
     lines.extend(summarize_reserve(reserve))
     lines.append(divider)
     lines.append("")
