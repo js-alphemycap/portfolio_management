@@ -21,7 +21,6 @@ It imports `fetch_ohlcv` from the sibling `price_data_infra` repo and reads the 
 
 ## Config
 - strategy configs remain under `configs/jobs/`
-- market-data DB access lives in `configs/jobs/market_data_access.yaml`
 - trade logs remain under `configs/state/`
 
 ## Dependency setup
@@ -34,3 +33,7 @@ Install from this repo with the sibling dependency in place:
 - `vm`: run against the database created by `price_data_infra` on the VM.
 - `local`: sync data from the VM first, then run locally against that synced database.
 - No trading logic was changed from the original flow.
+
+Market-data source selection is owned by `price_data_infra`. `portfolio_management`
+sets `JOB_PROFILE` (`local` or `vm`) and can still override with `--db-url` or
+`--db-path` when needed.

@@ -110,17 +110,8 @@ def main() -> None:
     strategy_conf = load_reserve_portfolio_dual_ma_config(
         load_job_config("dual_ma_strategy", use_profile=False)
     )
-    try:
-        db_conf = load_job_config("market_data_access")
-    except FileNotFoundError:
-        db_conf = {}
-
-    db_url = db_conf.get("db_url") if isinstance(db_conf, dict) else None
-    db_path = _resolve_db_path(db_conf.get("db_path") if isinstance(db_conf, dict) else None)
-    if args.db_url is not None:
-        db_url = args.db_url
-    if args.db_path is not None:
-        db_path = _resolve_db_path(args.db_path)
+    db_url = args.db_url
+    db_path = _resolve_db_path(args.db_path) if args.db_path is not None else None
 
     ohlc_btc = _load_daily_ohlc(
         strategy_conf.btc_symbol,

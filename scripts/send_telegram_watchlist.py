@@ -14,9 +14,9 @@ from typing import Iterable, Sequence
 import requests
 
 from price_data_infra.data import fetch_ohlcv
+from price_data_infra.helpers.job_config import load_job_config as load_price_data_job_config
 from portfolio_management.helpers.config import BASE_DIR
 from portfolio_management.helpers.http import get_requests_verify
-from portfolio_management.helpers.job_config import load_job_config
 
 
 def _resolve_db_path(db_path_value: str | None) -> Path | None:
@@ -176,18 +176,10 @@ def main() -> None:
 
     os.environ["JOB_PROFILE"] = args.profile
 
-    try:
-        job_conf = load_job_config("market_data_access")
-    except FileNotFoundError:
-        job_conf = {}
-
-    db_url = job_conf.get("db_url") if isinstance(job_conf, dict) else None
-    db_path = _resolve_db_path(job_conf.get("db_path") if isinstance(job_conf, dict) else None)
-    if args.db_url is not None:
-        db_url = args.db_url
-    if args.db_path is not None:
-        db_path = _resolve_db_path(args.db_path)
-    symbols = _resolve_symbols(args.symbols, job_conf.get("symbols", []))
+    db_url = args.db_url
+    db_path = _resolve_db_path(args.db_path) if args.db_path is not None else None
+    price_data_conf = load_price_data_job_config("hourly_ohlcv")
+    symbols = _resolve_symbols(args.symbols, price_data_conf.get("symbols", []))
     if not symbols:
         parser.error("No symbols configured. Provide --symbol arguments or update the job config.")
 

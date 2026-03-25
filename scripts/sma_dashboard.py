@@ -20,7 +20,6 @@ import pandas as pd
 from price_data_infra.data import fetch_ohlcv
 from portfolio_management.helpers.config import BASE_DIR
 from portfolio_management.helpers.email import EmailClient
-from portfolio_management.helpers.job_config import load_job_config
 
 DEFAULT_ASSET_MA_PAIRS: Sequence[tuple[str, int]] = (
     ("ETH-USD", 50),
@@ -423,25 +422,11 @@ def main() -> None:
     args = parser.parse_args()
 
     email_client = EmailClient()
-    db_url: str | None = None
-    db_path: Path | None = None
 
     os.environ["JOB_PROFILE"] = args.profile
 
-    try:
-        job_conf = load_job_config("market_data_access")
-    except FileNotFoundError:
-        job_conf = {}
-
-    db_url = job_conf.get("db_url") if isinstance(job_conf, dict) else None
-    db_path_value = job_conf.get("db_path") if isinstance(job_conf, dict) else None
-    if db_path_value:
-        path_candidate = Path(db_path_value)
-        if not path_candidate.is_absolute():
-            path_candidate = BASE_DIR / path_candidate
-        db_path = path_candidate
-    if args.db_url is not None:
-        db_url = args.db_url
+    db_url = args.db_url
+    db_path: Path | None = None
     if args.db_path is not None:
         path_candidate = Path(args.db_path)
         if not path_candidate.is_absolute():

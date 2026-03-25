@@ -5,7 +5,7 @@
 #   2) Alt/ETH (close_alt / close_eth)
 #   3) Alt/Cash (close_alt)
 # Then compare the latest value vs its SMA(window) to color a matrix cell.
-# Database settings are sourced from configs/jobs/market_data_access.yaml + JOB_PROFILE.
+# Database settings are sourced from price_data_infra via JOB_PROFILE.
 
 alts:
   - LINK-USD

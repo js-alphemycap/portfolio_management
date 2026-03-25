@@ -115,17 +115,8 @@ def main() -> None:
 
     strategy_raw = load_job_config("sol_eth_rotation_strategy")
     strategy_conf = load_sol_eth_rotation_config(strategy_raw)
-    try:
-        db_conf = load_job_config("market_data_access")
-    except FileNotFoundError:
-        db_conf = {}
-
-    db_url = db_conf.get("db_url") if isinstance(db_conf, dict) else None
-    db_path = _resolve_db_path(db_conf.get("db_path") if isinstance(db_conf, dict) else None)
-    if args.db_url is not None:
-        db_url = args.db_url
-    if args.db_path is not None:
-        db_path = _resolve_db_path(args.db_path)
+    db_url = args.db_url
+    db_path = _resolve_db_path(args.db_path) if args.db_path is not None else None
 
     sol_close = _load_daily_close(
         strategy_conf.sol_symbol,

@@ -10,7 +10,6 @@ import base64
 import os
 from datetime import datetime, timezone
 from io import BytesIO
-from pathlib import Path
 from typing import Iterable
 
 import matplotlib.pyplot as plt
@@ -18,18 +17,8 @@ import numpy as np
 import pandas as pd
 
 from price_data_infra.data import fetch_ohlcv
-from portfolio_management.helpers.config import BASE_DIR
 from portfolio_management.helpers.email import EmailClient
 from portfolio_management.helpers.job_config import load_job_config
-
-
-def _resolve_db_path(db_path_value: str | None) -> Path | None:
-    if not db_path_value:
-        return None
-    path_candidate = Path(db_path_value)
-    if not path_candidate.is_absolute():
-        path_candidate = BASE_DIR / path_candidate
-    return path_candidate
 
 
 def _load_close_series(
@@ -255,13 +244,8 @@ def main() -> None:
     close_hour = int(job_conf.get("close_hour", 12))
     start_date = _parse_start_date(job_conf.get("start_date"))
 
-    try:
-        db_conf = load_job_config("market_data_access")
-    except FileNotFoundError:
-        db_conf = {}
-
-    db_url = db_conf.get("db_url") if isinstance(db_conf, dict) else None
-    db_path = _resolve_db_path(db_conf.get("db_path") if isinstance(db_conf, dict) else None)
+    db_url = None
+    db_path = None
 
     status, details = build_status_frame(
         alts=alts,
