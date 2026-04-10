@@ -127,6 +127,38 @@ def build_dual_ma_strategy_asset_block(
     return "\n".join(lines)
 
 
+def build_dual_ma_strategy_reserve_asset_message(
+    *,
+    as_of: pd.Timestamp,
+    trigger_today: bool,
+    row: pd.Series,
+    prefix: str,
+    fast_days: int,
+    slow_days: int,
+    atr_days: int,
+    sig: float,
+    re_risking: bool,
+    target: float,
+) -> str:
+    header = [
+        f"Reserve Portfolio {prefix} — {as_of.date()}",
+        f"Trigger today: {'YES' if bool(trigger_today) else 'NO'}",
+        f"Target weight: {prefix} {_fmt_pct(target)}",
+        "",
+    ]
+    asset_block = build_dual_ma_strategy_asset_block(
+        row=row,
+        prefix=prefix,
+        fast_days=fast_days,
+        slow_days=slow_days,
+        atr_days=atr_days,
+        sig=sig,
+        re_risking=re_risking,
+        target=target,
+    )
+    return "\n".join(header) + asset_block
+
+
 def build_dual_ma_strategy_reserve_portfolio_message(
     *,
     as_of: pd.Timestamp,
@@ -177,7 +209,7 @@ def build_dual_ma_strategy_reserve_portfolio_message(
 
 
 __all__ = [
+    "build_dual_ma_strategy_reserve_asset_message",
     "build_dual_ma_strategy_reserve_portfolio_message",
     "build_dual_ma_strategy_asset_block",
 ]
-

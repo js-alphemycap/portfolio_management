@@ -41,12 +41,77 @@ def _reserve_next_level(message: str, asset: str) -> str:
     return " / ".join(lines) if lines else "NA"
 
 
-def summarize_reserve(message: str) -> list[str]:
-    weights = _extract(r"^Target weights:\s*(.+)$", message) or "NA"
-    btc_state = _extract(r"--- BTC ---\nState:\s*(.+)", message) or "NA"
-    eth_state = _extract(r"--- ETH ---\nState:\s*(.+)", message) or "NA"
-    btc_next = _reserve_next_level(message, "BTC")
-    eth_next = _reserve_next_level(message, "ETH")
+def _reserve_asset_weight(message: str, asset: str) -> str:
+    return _extract(rf"^Target weight:\s*{asset}\s+(.+)$", message) or "NA"
+
+
+def _parse_pct(text: str) -> float | None:
+    try:
+        return float(text.strip().replace("%", "")) / 100.0
+    except Exception:
+        return None
+
+
+def _reserve_weights_text(btc_message: str, eth_message: str) -> str:
+    btc_weight = _reserve_asset_weight(btc_message, "BTC")
+    eth_weight = _reserve_asset_weight(eth_message, "ETH")
+    btc_value = _parse_pct(btc_weight)
+    eth_value = _parse_pct(eth_weight)
+    if btc_value is None or eth_value is None:
+        return "NA"
+    cash_value = 1.0 - btc_value - eth_value
+    return f"BTC {btc_weight} | ETH {eth_weight} | CASH {cash_value * 100.0:.1f}%"
+
+
+def _split_legacy_reserve_message(message: str) -> tuple[str, str]:
+    btc_match = re.search(r"(?s)(^Reserve Portfolio.+?Target weights:.*?)(\n\n--- BTC ---.*?)(?=\n\n--- ETH ---)", message)
+    eth_match = re.search(r"(?s)(^Reserve Portfolio.+?Target weights:.*?)(\n\n--- ETH ---.*)\Z", message)
+    if not btc_match or not eth_match:
+        raise FileNotFoundError("Could not split legacy reserve_dual_ma archive.")
+    header = btc_match.group(1)
+    btc_weight = _extract(r"Target weights:\s*BTC\s+([^|]+)", message) or "NA"
+    eth_weight = _extract(r"Target weights:.*ETH\s+([^|]+)", message) or "NA"
+    btc_message = "\n".join([
+        re.sub(r"Reserve Portfolio\s+—", "Reserve Portfolio BTC —", header.splitlines()[0]),
+        header.splitlines()[1],
+        f"Target weight: BTC {btc_weight.strip()}",
+        "",
+    ]) + btc_match.group(2)
+    eth_message = "\n".join([
+        re.sub(r"Reserve Portfolio\s+—", "Reserve Portfolio ETH —", header.splitlines()[0]),
+        header.splitlines()[1],
+        f"Target weight: ETH {eth_weight.strip()}",
+        "",
+    ]) + eth_match.group(2)
+    return btc_message, eth_message
+
+
+def load_reserve_strategy_messages(message_date: date) -> tuple[str, str]:
+    try:
+        return (
+            load_archived_strategy_message(
+                strategy_slug="reserve_dual_ma_btc",
+                message_date=message_date,
+            ),
+            load_archived_strategy_message(
+                strategy_slug="reserve_dual_ma_eth",
+                message_date=message_date,
+            ),
+        )
+    except FileNotFoundError:
+        legacy = load_archived_strategy_message(
+            strategy_slug="reserve_dual_ma",
+            message_date=message_date,
+        )
+        return _split_legacy_reserve_message(legacy)
+
+
+def summarize_reserve(btc_message: str, eth_message: str) -> list[str]:
+    weights = _reserve_weights_text(btc_message, eth_message)
+    btc_state = _extract(r"--- BTC ---\nState:\s*(.+)", btc_message) or "NA"
+    eth_state = _extract(r"--- ETH ---\nState:\s*(.+)", eth_message) or "NA"
+    btc_next = _reserve_next_level(btc_message, "BTC")
+    eth_next = _reserve_next_level(eth_message, "ETH")
     return [
         "Reserve Portfolio",
         "",
@@ -57,10 +122,11 @@ def summarize_reserve(message: str) -> list[str]:
     ]
 
 
-def _reserve_action_summary(message: str) -> str:
-    trigger_today = _extract(r"^Trigger today:\s*(YES|NO)$", message) or "NO"
-    weights = _extract(r"^Target weights:\s*(.+)$", message) or "NA"
-    if trigger_today == "YES":
+def _reserve_action_summary(btc_message: str, eth_message: str) -> str:
+    btc_trigger_today = _extract(r"^Trigger today:\s*(YES|NO)$", btc_message) or "NO"
+    eth_trigger_today = _extract(r"^Trigger today:\s*(YES|NO)$", eth_message) or "NO"
+    weights = _reserve_weights_text(btc_message, eth_message)
+    if btc_trigger_today == "YES" or eth_trigger_today == "YES":
         return f"Reserve rebalance to {weights}"
     return "No action"
 
@@ -135,8 +201,8 @@ def summarize_alt(message: str, title: str) -> str:
     return " | ".join(parts)
 
 
-def _action_header_lines(reserve: str, sol: str, hype: str) -> list[str]:
-    reserve_action = _reserve_action_summary(reserve)
+def _action_header_lines(reserve_btc: str, reserve_eth: str, sol: str, hype: str) -> list[str]:
+    reserve_action = _reserve_action_summary(reserve_btc, reserve_eth)
     sol_action = _alt_action_label(sol, "SOL/ETH")
     hype_action = _alt_action_label(hype, "HYPE/ETH")
     has_action = any(
@@ -153,10 +219,7 @@ def _action_header_lines(reserve: str, sol: str, hype: str) -> list[str]:
 
 
 def build_summary_text(message_date: date) -> str:
-    reserve = load_archived_strategy_message(
-        strategy_slug="reserve_dual_ma",
-        message_date=message_date,
-    )
+    reserve_btc, reserve_eth = load_reserve_strategy_messages(message_date)
     sol = load_archived_strategy_message(
         strategy_slug="sol_eth_rotation",
         message_date=message_date,
@@ -172,12 +235,12 @@ def build_summary_text(message_date: date) -> str:
         "",
         divider,
         "",
-        *_action_header_lines(reserve, sol, hype),
+        *_action_header_lines(reserve_btc, reserve_eth, sol, hype),
         "",
         divider,
         "",
     ]
-    lines.extend(summarize_reserve(reserve))
+    lines.extend(summarize_reserve(reserve_btc, reserve_eth))
     lines.append(divider)
     lines.append("")
     lines.append("Alternative Strategies")
@@ -229,18 +292,24 @@ def main() -> None:
     parser = build_parser()
     args = parser.parse_args()
 
+    def _latest_reserve_date() -> date:
+        try:
+            return latest_archived_message_date(strategy_slug="reserve_dual_ma_btc")
+        except FileNotFoundError:
+            return latest_archived_message_date(strategy_slug="reserve_dual_ma")
+
     today_utc = datetime.now(timezone.utc).date()
     requested_date = (
         date.fromisoformat(args.date)
         if args.date
-        else latest_archived_message_date(strategy_slug="reserve_dual_ma")
+        else _latest_reserve_date()
     )
     warning_lines: list[str] = []
     try:
         message_date = requested_date
         summary_text = build_summary_text(message_date)
     except FileNotFoundError:
-        fallback_date = latest_archived_message_date(strategy_slug="reserve_dual_ma")
+        fallback_date = _latest_reserve_date()
         summary_text = build_summary_text(fallback_date)
         warning_lines.append(
             f"WARNING: No archived summary inputs found for requested date {requested_date.isoformat()}; "

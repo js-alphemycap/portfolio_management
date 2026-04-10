@@ -8,6 +8,7 @@ from typing import Any, Mapping
 import pandas as pd
 
 from portfolio_management.helpers.config import BASE_DIR
+from portfolio_management.strategy_signals import StrategySignalRecord
 
 from .hype_eth_trade_log import HypeEthTradeEvent, load_hype_eth_trade_log
 
@@ -499,9 +500,24 @@ def generate_hype_eth_rotation_snapshot(
     )
 
 
+def build_hype_eth_signal_record(snapshot: HypeEthRotationSnapshot) -> StrategySignalRecord:
+    state = "IN TRADE (HYPE)" if snapshot.in_position else "OFF TRADE (ETH)"
+    return StrategySignalRecord(
+        strategy_id="HYPE_ETH",
+        signal_strategy_slug="hype_eth_rotation",
+        as_of=snapshot.as_of,
+        effective_signal_value=float(snapshot.alloc_after_lag),
+        raw_signal_value=float(snapshot.alloc_signal),
+        target_weight=float(snapshot.alloc_after_lag),
+        trigger_today=bool(snapshot.trigger_today),
+        current_state=state,
+    )
+
+
 __all__ = [
     "HypeEthRotationConfig",
     "HypeEthRotationSnapshot",
+    "build_hype_eth_signal_record",
     "load_hype_eth_rotation_config",
     "generate_hype_eth_rotation_snapshot",
 ]
