@@ -1,12 +1,12 @@
 strategies:
-  BTC_DUAL_MA:
+  ACTIVE_BTC_MA:
     signal_strategy_slug: reserve_dual_ma_btc
 
-  ETH_DUAL_MA:
+  ACTIVE_ETH_MA:
     signal_strategy_slug: reserve_dual_ma_eth
 
-  SOL_ETH:
+  ACTIVE_SOL_ETH:
     signal_strategy_slug: sol_eth_rotation
 
-  HYPE_ETH:
+  ACTIVE_HYPE_ETH:
     signal_strategy_slug: hype_eth_rotation
