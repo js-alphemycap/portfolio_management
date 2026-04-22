@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import argparse
+import json
+import math
 import os
 from datetime import datetime, timezone
 from pathlib import Path
@@ -17,14 +19,17 @@ from portfolio_management.helpers.job_config import load_job_config
 from portfolio_management.market_data import load_daily_close, load_daily_ohlc, resolve_db_path
 from portfolio_management.strategies.dual_ma_strategy_core import dual_ma
 from portfolio_management.strategies.dual_ma_strategy_reserve_portfolio import (
+    generate_reserve_portfolio_snapshot,
     load_reserve_portfolio_dual_ma_config,
 )
 from portfolio_management.strategies.hype_eth_rotation_strategy import (
     _compute_rsi as compute_hype_rsi,
+    generate_hype_eth_rotation_snapshot,
     load_hype_eth_rotation_config,
 )
 from portfolio_management.strategies.sol_eth_rotation_strategy import (
     _compute_rsi as compute_sol_rsi,
+    generate_sol_eth_rotation_snapshot,
     load_sol_eth_rotation_config,
 )
 from portfolio_management.strategy_signal_mapping import load_strategy_signal_mapping
@@ -313,6 +318,138 @@ def _build_matrix(*, start_date: str, db_url: str | None, db_path: Path | None) 
     return matrix
 
 
+def _coerce_value(value):
+    if value is None:
+        return None
+    if isinstance(value, (bool, int, str)):
+        return value
+    try:
+        if isinstance(value, pd.Timestamp):
+            return value.isoformat()
+    except Exception:
+        pass
+    try:
+        f = float(value)
+        if math.isnan(f) or math.isinf(f):
+            return None
+        return f
+    except (TypeError, ValueError):
+        return str(value)
+
+
+def _build_reserve_context(*, db_url, db_path):
+    reserve_conf = load_reserve_portfolio_dual_ma_config(
+        load_job_config("dual_ma_strategy", use_profile=False)
+    )
+    btc_ohlc = load_daily_ohlc(reserve_conf.btc_symbol, close_hour=reserve_conf.close_hour,
+        start_date=reserve_conf.start_date, db_url=db_url, db_path=db_path)
+    eth_ohlc = load_daily_ohlc(reserve_conf.eth_symbol, close_hour=reserve_conf.close_hour,
+        start_date=reserve_conf.start_date, db_url=db_url, db_path=db_path)
+    snap = generate_reserve_portfolio_snapshot(ohlc_btc=btc_ohlc, ohlc_eth=eth_ohlc, config=reserve_conf)
+    row = {k: _coerce_value(v) for k, v in snap.compact_row.items()}
+    btc = {
+        "signal": float(snap.btc_signal),
+        "rerisk": bool(snap.btc_rerisk),
+        "fast_days": int(snap.btc_fast_days),
+        "slow_days": int(snap.btc_slow_days),
+        "atr_days": int(snap.btc_atr_days),
+        "close": row.get("BTC_close"),
+        "atr": row.get("BTC_atr"),
+        "ma_fast": row.get("BTC_ma_fast"),
+        "ma_fast_band": [row.get("BTC_ma_fast_lo"), row.get("BTC_ma_fast_hi")],
+        "ma_slow": row.get("BTC_ma_slow"),
+        "ma_slow_band": [row.get("BTC_ma_slow_lo"), row.get("BTC_ma_slow_hi")],
+        "target_weight": row.get("BTC_target"),
+    }
+    eth = {
+        "signal": float(snap.eth_signal),
+        "rerisk": bool(snap.eth_rerisk),
+        "fast_days": int(snap.eth_fast_days),
+        "slow_days": int(snap.eth_slow_days),
+        "atr_days": int(snap.eth_atr_days),
+        "close": row.get("ETH_close"),
+        "atr": row.get("ETH_atr"),
+        "ma_fast": row.get("ETH_ma_fast"),
+        "ma_fast_band": [row.get("ETH_ma_fast_lo"), row.get("ETH_ma_fast_hi")],
+        "ma_slow": row.get("ETH_ma_slow"),
+        "ma_slow_band": [row.get("ETH_ma_slow_lo"), row.get("ETH_ma_slow_hi")],
+        "target_weight": row.get("ETH_target"),
+    }
+    return {"ACTIVE_BTC_MA": btc, "ACTIVE_ETH_MA": eth}
+
+
+def _build_rotation_context_sol(*, db_url, db_path):
+    conf = load_sol_eth_rotation_config(load_job_config("sol_eth_rotation_strategy"))
+    sol = load_daily_close(conf.sol_symbol, close_hour=conf.close_hour,
+        start_date=SOL_FULL_HISTORY_START_DATE, db_url=db_url, db_path=db_path)
+    eth = load_daily_close(conf.eth_symbol, close_hour=conf.close_hour,
+        start_date=SOL_FULL_HISTORY_START_DATE, db_url=db_url, db_path=db_path)
+    snap = generate_sol_eth_rotation_snapshot(sol_close=sol, eth_close=eth, config=conf)
+    return {
+        "signal": float(snap.alloc_signal),
+        "in_position": bool(snap.in_position),
+        "trigger_today": bool(snap.trigger_today),
+        "sol_close": _coerce_value(snap.sol_close),
+        "eth_close": _coerce_value(snap.eth_close),
+        "ratio": _coerce_value(snap.ratio_close),
+        "ema_fast": _coerce_value(snap.price_ratio_ema_fast),
+        "ema_slow": _coerce_value(snap.price_ratio_ema_slow),
+        "ema_fast_prev": _coerce_value(snap.price_ratio_ema_fast_prev),
+        "ema_slow_prev": _coerce_value(snap.price_ratio_ema_slow_prev),
+        "rsi": _coerce_value(snap.rsi),
+        "rsi_prev": _coerce_value(snap.rsi_prev),
+        "fast_span": int(conf.fast_span),
+        "slow_span": int(conf.slow_span),
+        "rsi_period": int(conf.rsi_period),
+        "rsi_exit_level": float(conf.rsi_exit_level),
+        "entry_filter_ok_today": bool(snap.entry_filter_ok_today),
+        "early_exit_today": bool(snap.early_exit_today),
+    }
+
+
+def _build_rotation_context_hype(*, db_url, db_path):
+    conf = load_hype_eth_rotation_config(load_job_config("hype_eth_rotation_strategy"))
+    hype = load_daily_close(conf.hype_symbol, close_hour=conf.close_hour,
+        start_date=HYPE_FULL_HISTORY_START_DATE, db_url=db_url, db_path=db_path)
+    eth = load_daily_close(conf.eth_symbol, close_hour=conf.close_hour,
+        start_date=HYPE_FULL_HISTORY_START_DATE, db_url=db_url, db_path=db_path)
+    snap = generate_hype_eth_rotation_snapshot(hype_close=hype, eth_close=eth, config=conf)
+    return {
+        "signal": float(snap.alloc_signal),
+        "in_position": bool(snap.in_position),
+        "trigger_today": bool(snap.trigger_today),
+        "hype_close": _coerce_value(snap.hype_close),
+        "eth_close": _coerce_value(snap.eth_close),
+        "ratio": _coerce_value(snap.ratio_close),
+        "ema_fast": _coerce_value(snap.price_ratio_ema_fast),
+        "ema_slow": _coerce_value(snap.price_ratio_ema_slow),
+        "ema_fast_prev": _coerce_value(snap.price_ratio_ema_fast_prev),
+        "ema_slow_prev": _coerce_value(snap.price_ratio_ema_slow_prev),
+        "rsi": _coerce_value(snap.rsi),
+        "rsi_prev": _coerce_value(snap.rsi_prev),
+        "fast_span": int(conf.fast_span),
+        "slow_span": int(conf.slow_span),
+        "rsi_period": int(conf.rsi_period),
+        "rsi_exit_level": float(conf.rsi_exit_level),
+        "entry_filter_ok_today": bool(snap.entry_filter_ok_today),
+        "early_exit_today": bool(snap.early_exit_today),
+    }
+
+
+def _build_context(*, matrix, db_url, db_path):
+    context = {}
+    context.update(_build_reserve_context(db_url=db_url, db_path=db_path))
+    context["ACTIVE_SOL_ETH"] = _build_rotation_context_sol(db_url=db_url, db_path=db_path)
+    context["ACTIVE_HYPE_ETH"] = _build_rotation_context_hype(db_url=db_url, db_path=db_path)
+    if len(matrix) >= 2:
+        prev = matrix.iloc[-2]
+        for strategy_key, details in context.items():
+            if strategy_key in matrix.columns:
+                details["signal_previous"] = float(prev[strategy_key])
+                details["previous_date"] = str(prev["date"])
+    return context
+
+
 def main() -> None:
     args = build_parser().parse_args()
     os.environ["JOB_PROFILE"] = args.profile
@@ -335,10 +472,21 @@ def main() -> None:
     output_path = output_root / f"{as_of_label}_strategy_signal_history_matrix_{_timestamp_slug(extracted_at)}.csv"
     matrix.to_csv(output_path, index=False)
 
+    context = _build_context(matrix=matrix, db_url=db_url, db_path=db_path)
+    context_payload = {
+        "as_of": as_of_label,
+        "generated_at": extracted_at,
+        "strategies": context,
+    }
+    context_path = output_root / f"{as_of_label}_strategy_signal_context_{_timestamp_slug(extracted_at)}.json"
+    with open(context_path, "w") as cf:
+        json.dump(context_payload, cf, indent=2, default=str)
+
     print(f"Exported {len(matrix)} rows")
     print(f"Start date: {matrix['date'].iloc[0]}")
     print(f"As of date: {as_of_label}")
     print(f"CSV path: {output_path}")
+    print(f"Context JSON path: {context_path}")
 
 
 if __name__ == "__main__":
