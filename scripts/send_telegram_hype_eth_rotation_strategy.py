@@ -8,15 +8,10 @@ import _bootstrap  # noqa: F401
 import argparse
 import os
 from datetime import datetime, timezone
-from pathlib import Path
 
-import requests
-
-from price_data_infra.data import fetch_ohlcv
-from portfolio_management.helpers.config import BASE_DIR
-from portfolio_management.helpers.http import get_requests_verify
 from portfolio_management.helpers.job_config import load_job_config
-from portfolio_management.message_archive import archive_strategy_message
+from portfolio_management.market_data import load_daily_close, resolve_db_path
+from portfolio_management.telegram_delivery import emit_telegram_message
 from portfolio_management.strategies.hype_eth_rotation_strategy import (
     generate_hype_eth_rotation_snapshot,
     load_hype_eth_rotation_config,
@@ -26,52 +21,6 @@ from portfolio_management.strategies.hype_eth_rotation_strategy_telegram import 
 )
 
 FULL_HISTORY_START_DATE = datetime(2022, 1, 1, tzinfo=timezone.utc)
-
-
-def _resolve_db_path(db_path_value: str | None) -> Path | None:
-    if not db_path_value:
-        return None
-    path_candidate = Path(db_path_value)
-    if not path_candidate.is_absolute():
-        path_candidate = BASE_DIR / path_candidate
-    return path_candidate
-
-
-def _load_daily_close(
-    symbol: str,
-    *,
-    close_hour: int,
-    start_date: datetime | None,
-    db_url: str | None,
-    db_path: Path | None,
-):
-    df = fetch_ohlcv(
-        symbol,
-        frequency="daily",
-        close_hour=close_hour,
-        start=start_date,
-        db_url=db_url,
-        db_path=db_path,
-    )
-    if df.empty:
-        raise ValueError(f"No data returned for {symbol}.")
-    if "close" not in df.columns:
-        raise ValueError(f"{symbol} data missing required column: close")
-    return df["close"].astype(float).copy()
-
-
-def send_telegram_message(bot_token: str, chat_id: str, message: str) -> dict[str, object]:
-    url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
-    payload = {"chat_id": chat_id, "text": message}
-    response = requests.post(url, json=payload, timeout=15, verify=get_requests_verify())
-    if not response.ok:
-        try:
-            info = response.json()
-            desc = info.get("description")
-        except Exception:  # pragma: no cover - best-effort diagnostics
-            desc = response.text
-        raise SystemExit(f"Telegram API error ({response.status_code}): {desc}")
-    return response.json()
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -116,16 +65,16 @@ def main() -> None:
     strategy_raw = load_job_config("hype_eth_rotation_strategy")
     strategy_conf = load_hype_eth_rotation_config(strategy_raw)
     db_url = args.db_url
-    db_path = _resolve_db_path(args.db_path) if args.db_path is not None else None
+    db_path = resolve_db_path(args.db_path) if args.db_path is not None else None
 
-    hype_close = _load_daily_close(
+    hype_close = load_daily_close(
         strategy_conf.hype_symbol,
         close_hour=strategy_conf.close_hour,
         start_date=FULL_HISTORY_START_DATE,
         db_url=db_url,
         db_path=db_path,
     )
-    eth_close = _load_daily_close(
+    eth_close = load_daily_close(
         strategy_conf.eth_symbol,
         close_hour=strategy_conf.close_hour,
         start_date=FULL_HISTORY_START_DATE,
@@ -151,29 +100,15 @@ def main() -> None:
     )
     chat_id = args.chat_id
 
-    print("📨 Telegram HYPE/ETH rotation strategy message:")
-    print(message)
-    archive_path = archive_strategy_message(strategy_slug="hype_eth_rotation", message=message)
-    print(f"🗂️ Archived message -> {archive_path}")
-
-    if args.dry_run:
-        if not chat_id:
-            chat_id = dry_run_chat_id
-        if chat_id:
-            print(f"Dry-run chat_id: {chat_id}")
-        print("Dry-run mode enabled; message not sent.")
-        return
-
-    if not chat_id:
-        parser.error("chat_id is required unless --dry-run uses configured telegram.dry_run_chat_id.")
-
-    bot_token: str | None = os.environ.get("TELEGRAM_BOT_TOKEN")
-    if not bot_token:
-        parser.error("Telegram bot token is required via TELEGRAM_BOT_TOKEN environment variable.")
-
-    response = send_telegram_message(bot_token, chat_id, message)
-    print("✅ Message sent. Telegram response:")
-    print(response)
+    emit_telegram_message(
+        parser=parser,
+        chat_id=chat_id,
+        dry_run_chat_id=dry_run_chat_id,
+        dry_run=args.dry_run,
+        message_label="📨 Telegram HYPE/ETH rotation strategy message:",
+        strategy_slug="hype_eth_rotation",
+        message=message,
+    )
 
 
 if __name__ == "__main__":

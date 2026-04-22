@@ -6,8 +6,13 @@ from typing import Any, Mapping
 
 import pandas as pd
 
+from portfolio_management.strategy_signals import StrategySignalRecord
+
 from .dual_ma_strategy_core import DualMAParams, dual_ma
-from .dual_ma_strategy_telegram import build_dual_ma_strategy_reserve_portfolio_message
+from .dual_ma_strategy_telegram import (
+    build_dual_ma_strategy_reserve_asset_message,
+    build_dual_ma_strategy_reserve_portfolio_message,
+)
 
 
 @dataclass(frozen=True)
@@ -22,6 +27,23 @@ class ReservePortfolioDualMAConfig:
     w_ref_eth: float
     derisk_btc: float
     derisk_eth: float
+
+
+@dataclass(frozen=True)
+class ReservePortfolioSnapshot:
+    as_of: pd.Timestamp
+    compact_row: pd.Series
+    btc_signal: float
+    eth_signal: float
+    btc_rerisk: bool
+    eth_rerisk: bool
+    trigger_today: bool
+    btc_fast_days: int
+    btc_slow_days: int
+    btc_atr_days: int
+    eth_fast_days: int
+    eth_slow_days: int
+    eth_atr_days: int
 
 
 def _dt_from_iso(value: str | None) -> datetime | None:
@@ -170,12 +192,12 @@ def build_reserve_portfolio_compact_row(
     return row, trigger_today
 
 
-def generate_reserve_portfolio_dual_ma_telegram_message(
+def generate_reserve_portfolio_snapshot(
     *,
     ohlc_btc: pd.DataFrame,
     ohlc_eth: pd.DataFrame,
     config: ReservePortfolioDualMAConfig,
-) -> str:
+) -> ReservePortfolioSnapshot:
     btc_res = dual_ma(ohlc_btc, config.btc_params, start_date=config.start_date)
     eth_res = dual_ma(ohlc_eth, config.eth_params, start_date=config.start_date)
 
@@ -209,11 +231,11 @@ def generate_reserve_portfolio_dual_ma_telegram_message(
         as_of=as_of,
     )
 
-    return build_dual_ma_strategy_reserve_portfolio_message(
+    return ReservePortfolioSnapshot(
         as_of=as_of,
-        row=mat_row,
-        btc_sig=float(btc_sig.loc[as_of]),
-        eth_sig=float(eth_sig.loc[as_of]),
+        compact_row=mat_row,
+        btc_signal=float(btc_sig.loc[as_of]),
+        eth_signal=float(eth_sig.loc[as_of]),
         btc_rerisk=bool(btc_rerisk.loc[as_of]),
         eth_rerisk=bool(eth_rerisk.loc[as_of]),
         trigger_today=trigger_today,
@@ -226,8 +248,103 @@ def generate_reserve_portfolio_dual_ma_telegram_message(
     )
 
 
+def build_reserve_portfolio_dual_ma_telegram_message(
+    snapshot: ReservePortfolioSnapshot,
+) -> str:
+    return build_dual_ma_strategy_reserve_portfolio_message(
+        as_of=snapshot.as_of,
+        row=snapshot.compact_row,
+        btc_sig=snapshot.btc_signal,
+        eth_sig=snapshot.eth_signal,
+        btc_rerisk=snapshot.btc_rerisk,
+        eth_rerisk=snapshot.eth_rerisk,
+        trigger_today=snapshot.trigger_today,
+        btc_fast_days=snapshot.btc_fast_days,
+        btc_slow_days=snapshot.btc_slow_days,
+        btc_atr_days=snapshot.btc_atr_days,
+        eth_fast_days=snapshot.eth_fast_days,
+        eth_slow_days=snapshot.eth_slow_days,
+        eth_atr_days=snapshot.eth_atr_days,
+    )
+
+
+def build_reserve_portfolio_asset_telegram_message(
+    snapshot: ReservePortfolioSnapshot,
+    *,
+    asset: str,
+) -> str:
+    if asset == "BTC":
+        return build_dual_ma_strategy_reserve_asset_message(
+            as_of=snapshot.as_of,
+            trigger_today=snapshot.trigger_today,
+            row=snapshot.compact_row,
+            prefix="BTC",
+            fast_days=snapshot.btc_fast_days,
+            slow_days=snapshot.btc_slow_days,
+            atr_days=snapshot.btc_atr_days,
+            sig=snapshot.btc_signal,
+            re_risking=snapshot.btc_rerisk,
+            target=float(snapshot.compact_row["BTC_target"]),
+        )
+    if asset == "ETH":
+        return build_dual_ma_strategy_reserve_asset_message(
+            as_of=snapshot.as_of,
+            trigger_today=snapshot.trigger_today,
+            row=snapshot.compact_row,
+            prefix="ETH",
+            fast_days=snapshot.eth_fast_days,
+            slow_days=snapshot.eth_slow_days,
+            atr_days=snapshot.eth_atr_days,
+            sig=snapshot.eth_signal,
+            re_risking=snapshot.eth_rerisk,
+            target=float(snapshot.compact_row["ETH_target"]),
+        )
+    raise ValueError(f"Unsupported reserve asset {asset!r}")
+
+
+def build_reserve_portfolio_signal_records(
+    snapshot: ReservePortfolioSnapshot,
+) -> tuple[StrategySignalRecord, StrategySignalRecord]:
+    btc_effective_signal = 1.0 - float(snapshot.btc_signal)
+    eth_effective_signal = 1.0 - float(snapshot.eth_signal)
+
+    def _state_label(signal_value: float) -> str:
+        if signal_value <= 0.0:
+            return "Full Risk-On"
+        if signal_value >= 1.0:
+            return "Full Risk-Off"
+        return "Partial Risk-Off"
+
+    return (
+        StrategySignalRecord(
+            strategy_id="BTC_DUAL_MA",
+            signal_strategy_slug="reserve_dual_ma_btc",
+            as_of=snapshot.as_of,
+            effective_signal_value=btc_effective_signal,
+            raw_signal_value=float(snapshot.btc_signal),
+            target_weight=float(snapshot.compact_row["BTC_target"]) * btc_effective_signal,
+            trigger_today=bool(snapshot.trigger_today),
+            current_state=_state_label(btc_effective_signal),
+        ),
+        StrategySignalRecord(
+            strategy_id="ETH_DUAL_MA",
+            signal_strategy_slug="reserve_dual_ma_eth",
+            as_of=snapshot.as_of,
+            effective_signal_value=eth_effective_signal,
+            raw_signal_value=float(snapshot.eth_signal),
+            target_weight=float(snapshot.compact_row["ETH_target"]) * eth_effective_signal,
+            trigger_today=bool(snapshot.trigger_today),
+            current_state=_state_label(eth_effective_signal),
+        ),
+    )
+
+
 __all__ = [
     "ReservePortfolioDualMAConfig",
+    "ReservePortfolioSnapshot",
+    "build_reserve_portfolio_asset_telegram_message",
+    "build_reserve_portfolio_dual_ma_telegram_message",
+    "build_reserve_portfolio_signal_records",
+    "generate_reserve_portfolio_snapshot",
     "load_reserve_portfolio_dual_ma_config",
-    "generate_reserve_portfolio_dual_ma_telegram_message",
 ]

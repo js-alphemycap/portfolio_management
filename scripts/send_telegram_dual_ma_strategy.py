@@ -7,66 +7,14 @@ import _bootstrap  # noqa: F401
 
 import argparse
 import os
-from pathlib import Path
-
-import requests
-
-from price_data_infra.data import fetch_ohlcv
-from portfolio_management.helpers.config import BASE_DIR
-from portfolio_management.helpers.http import get_requests_verify
 from portfolio_management.helpers.job_config import load_job_config
-from portfolio_management.message_archive import archive_strategy_message
+from portfolio_management.market_data import load_daily_ohlc, resolve_db_path
+from portfolio_management.telegram_delivery import emit_telegram_message
 from portfolio_management.strategies.dual_ma_strategy_reserve_portfolio import (
-    generate_reserve_portfolio_dual_ma_telegram_message,
+    build_reserve_portfolio_asset_telegram_message,
+    generate_reserve_portfolio_snapshot,
     load_reserve_portfolio_dual_ma_config,
 )
-
-
-def _resolve_db_path(db_path_value: str | None) -> Path | None:
-    if not db_path_value:
-        return None
-    path_candidate = Path(db_path_value)
-    if not path_candidate.is_absolute():
-        path_candidate = BASE_DIR / path_candidate
-    return path_candidate
-
-
-def _load_daily_ohlc(
-    symbol: str,
-    *,
-    close_hour: int,
-    start_date,
-    db_url: str | None,
-    db_path: Path | None,
-):
-    df = fetch_ohlcv(
-        symbol,
-        frequency="daily",
-        close_hour=close_hour,
-        start=start_date,
-        db_url=db_url,
-        db_path=db_path,
-    )
-    if df.empty:
-        raise ValueError(f"No data returned for {symbol}.")
-    missing = {"high", "low", "close"} - set(df.columns)
-    if missing:
-        raise ValueError(f"{symbol} data missing required columns: {missing}")
-    return df[["high", "low", "close"]].copy()
-
-
-def send_telegram_message(bot_token: str, chat_id: str, message: str) -> dict[str, object]:
-    url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
-    payload = {"chat_id": chat_id, "text": message}
-    response = requests.post(url, json=payload, timeout=15, verify=get_requests_verify())
-    if not response.ok:
-        try:
-            info = response.json()
-            desc = info.get("description")
-        except Exception:  # pragma: no cover - best-effort diagnostics
-            desc = response.text
-        raise SystemExit(f"Telegram API error ({response.status_code}): {desc}")
-    return response.json()
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -75,6 +23,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "chat_id",
+        nargs="?",
         help="Telegram chat ID (e.g., -1001234567890).",
     )
     parser.add_argument(
@@ -111,16 +60,16 @@ def main() -> None:
         load_job_config("dual_ma_strategy", use_profile=False)
     )
     db_url = args.db_url
-    db_path = _resolve_db_path(args.db_path) if args.db_path is not None else None
+    db_path = resolve_db_path(args.db_path) if args.db_path is not None else None
 
-    ohlc_btc = _load_daily_ohlc(
+    ohlc_btc = load_daily_ohlc(
         strategy_conf.btc_symbol,
         close_hour=strategy_conf.close_hour,
         start_date=strategy_conf.start_date,
         db_url=db_url,
         db_path=db_path,
     )
-    ohlc_eth = _load_daily_ohlc(
+    ohlc_eth = load_daily_ohlc(
         strategy_conf.eth_symbol,
         close_hour=strategy_conf.close_hour,
         start_date=strategy_conf.start_date,
@@ -128,28 +77,31 @@ def main() -> None:
         db_path=db_path,
     )
 
-    message = generate_reserve_portfolio_dual_ma_telegram_message(
+    snapshot = generate_reserve_portfolio_snapshot(
         ohlc_btc=ohlc_btc,
         ohlc_eth=ohlc_eth,
         config=strategy_conf,
     )
-
-    print("📨 Telegram dual MA strategy message:")
-    print(message)
-    archive_path = archive_strategy_message(strategy_slug="reserve_dual_ma", message=message)
-    print(f"🗂️ Archived message -> {archive_path}")
-
-    if args.dry_run:
-        print("Dry-run mode enabled; message not sent.")
-        return
-
-    bot_token: str | None = os.environ.get("TELEGRAM_BOT_TOKEN")
-    if not bot_token:
-        parser.error("Telegram bot token is required via TELEGRAM_BOT_TOKEN environment variable.")
-
-    response = send_telegram_message(bot_token, args.chat_id, message)
-    print("✅ Message sent. Telegram response:")
-    print(response)
+    btc_message = build_reserve_portfolio_asset_telegram_message(snapshot, asset="BTC")
+    emit_telegram_message(
+        parser=parser,
+        chat_id=args.chat_id,
+        dry_run_chat_id=None,
+        dry_run=args.dry_run,
+        message_label="📨 Telegram reserve BTC strategy message:",
+        strategy_slug="reserve_dual_ma_btc",
+        message=btc_message,
+    )
+    eth_message = build_reserve_portfolio_asset_telegram_message(snapshot, asset="ETH")
+    emit_telegram_message(
+        parser=parser,
+        chat_id=args.chat_id,
+        dry_run_chat_id=None,
+        dry_run=args.dry_run,
+        message_label="📨 Telegram reserve ETH strategy message:",
+        strategy_slug="reserve_dual_ma_eth",
+        message=eth_message,
+    )
 
 
 if __name__ == "__main__":

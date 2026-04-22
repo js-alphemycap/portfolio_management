@@ -14,7 +14,6 @@ dependencies = [
     "msal>=1.25",
     "PyYAML>=6.0",
     "psycopg[binary]>=3.1",
-    "matplotlib>=3.8",
 ]
 
 [tool.setuptools]
@@ -22,3 +21,7 @@ package-dir = {"" = "src"}
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[project.scripts]
+export-strategy-signals = "portfolio_management.export_strategy_signals:main"
+export-strategy-signal-history-matrix = "portfolio_management.export_strategy_signal_history_matrix:main"

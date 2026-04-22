@@ -9,6 +9,7 @@ import numpy as np
 import pandas as pd
 
 from portfolio_management.helpers.config import BASE_DIR
+from portfolio_management.strategy_signals import StrategySignalRecord
 
 from .sol_eth_trade_log import SolEthTradeEvent, load_sol_eth_trade_log
 
@@ -81,6 +82,9 @@ class SolEthRotationSnapshot:
     price_ratio_ema_slow_prev: float | None
     rsi: float
     rsi_prev: float | None
+    base_target_signal: float
+    alloc_signal: float
+    alloc_after_lag: float
     signal_flip_today: bool
     early_exit_today: bool
     entry_filter_ok_today: bool
@@ -555,6 +559,9 @@ def generate_sol_eth_rotation_snapshot(
         price_ratio_ema_slow_prev=float(price_ratio_ema_slow.loc[prev_as_of]) if prev_as_of is not None and pd.notna(price_ratio_ema_slow.loc[prev_as_of]) else None,
         rsi=float(rsi.loc[as_of]) if pd.notna(rsi.loc[as_of]) else float("nan"),
         rsi_prev=float(rsi.loc[prev_as_of]) if prev_as_of is not None and pd.notna(rsi.loc[prev_as_of]) else None,
+        base_target_signal=float(base_target_signal.loc[as_of]),
+        alloc_signal=float(alloc_signal.loc[as_of]),
+        alloc_after_lag=float(alloc_to_sol.loc[as_of]),
         signal_flip_today=bool(signal_flip_event.loc[as_of]),
         early_exit_today=bool(early_exit_target.loc[as_of]),
         entry_filter_ok_today=bool(
@@ -573,11 +580,26 @@ def generate_sol_eth_rotation_snapshot(
     )
 
 
+def build_sol_eth_signal_record(snapshot: SolEthRotationSnapshot) -> StrategySignalRecord:
+    state = "IN TRADE (SOL)" if snapshot.in_position else "OFF TRADE (ETH)"
+    return StrategySignalRecord(
+        strategy_id="SOL_ETH",
+        signal_strategy_slug="sol_eth_rotation",
+        as_of=snapshot.as_of,
+        effective_signal_value=float(snapshot.alloc_after_lag),
+        raw_signal_value=float(snapshot.alloc_signal),
+        target_weight=float(snapshot.alloc_after_lag),
+        trigger_today=bool(snapshot.trigger_today),
+        current_state=state,
+    )
+
+
 __all__ = [
     "SolEthRotationConfig",
     "SolEthRotationSnapshot",
     "SolEthTrade",
     "SolEthReviewStatus",
+    "build_sol_eth_signal_record",
     "load_sol_eth_rotation_config",
     "generate_sol_eth_rotation_snapshot",
 ]

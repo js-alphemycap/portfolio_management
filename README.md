@@ -13,11 +13,6 @@ It imports `fetch_ohlcv` from the sibling `price_data_infra` repo and reads the 
 - `scripts/send_telegram_dual_ma_strategy.py`
 - `scripts/send_telegram_sol_eth_rotation_strategy.py`
 - `scripts/send_telegram_hype_eth_rotation_strategy.py`
-- `scripts/send_telegram_watchlist.py`
-- `scripts/send_telegram_dashboard_summary.py`
-- `scripts/send_telegram_alts_sma_monitoring.py`
-- `scripts/sma_dashboard.py`
-- `scripts/alts_sma_monitoring.py`
 
 ## Config
 - strategy configs remain under `configs/jobs/`
