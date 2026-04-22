@@ -9,10 +9,6 @@ import pandas as pd
 from portfolio_management.strategy_signals import StrategySignalRecord
 
 from .dual_ma_strategy_core import DualMAParams, dual_ma
-from .dual_ma_strategy_telegram import (
-    build_dual_ma_strategy_reserve_asset_message,
-    build_dual_ma_strategy_reserve_portfolio_message,
-)
 
 
 @dataclass(frozen=True)
@@ -248,60 +244,6 @@ def generate_reserve_portfolio_snapshot(
     )
 
 
-def build_reserve_portfolio_dual_ma_telegram_message(
-    snapshot: ReservePortfolioSnapshot,
-) -> str:
-    return build_dual_ma_strategy_reserve_portfolio_message(
-        as_of=snapshot.as_of,
-        row=snapshot.compact_row,
-        btc_sig=snapshot.btc_signal,
-        eth_sig=snapshot.eth_signal,
-        btc_rerisk=snapshot.btc_rerisk,
-        eth_rerisk=snapshot.eth_rerisk,
-        trigger_today=snapshot.trigger_today,
-        btc_fast_days=snapshot.btc_fast_days,
-        btc_slow_days=snapshot.btc_slow_days,
-        btc_atr_days=snapshot.btc_atr_days,
-        eth_fast_days=snapshot.eth_fast_days,
-        eth_slow_days=snapshot.eth_slow_days,
-        eth_atr_days=snapshot.eth_atr_days,
-    )
-
-
-def build_reserve_portfolio_asset_telegram_message(
-    snapshot: ReservePortfolioSnapshot,
-    *,
-    asset: str,
-) -> str:
-    if asset == "BTC":
-        return build_dual_ma_strategy_reserve_asset_message(
-            as_of=snapshot.as_of,
-            trigger_today=snapshot.trigger_today,
-            row=snapshot.compact_row,
-            prefix="BTC",
-            fast_days=snapshot.btc_fast_days,
-            slow_days=snapshot.btc_slow_days,
-            atr_days=snapshot.btc_atr_days,
-            sig=snapshot.btc_signal,
-            re_risking=snapshot.btc_rerisk,
-            target=float(snapshot.compact_row["BTC_target"]),
-        )
-    if asset == "ETH":
-        return build_dual_ma_strategy_reserve_asset_message(
-            as_of=snapshot.as_of,
-            trigger_today=snapshot.trigger_today,
-            row=snapshot.compact_row,
-            prefix="ETH",
-            fast_days=snapshot.eth_fast_days,
-            slow_days=snapshot.eth_slow_days,
-            atr_days=snapshot.eth_atr_days,
-            sig=snapshot.eth_signal,
-            re_risking=snapshot.eth_rerisk,
-            target=float(snapshot.compact_row["ETH_target"]),
-        )
-    raise ValueError(f"Unsupported reserve asset {asset!r}")
-
-
 def build_reserve_portfolio_signal_records(
     snapshot: ReservePortfolioSnapshot,
 ) -> tuple[StrategySignalRecord, StrategySignalRecord]:
@@ -342,8 +284,6 @@ def build_reserve_portfolio_signal_records(
 __all__ = [
     "ReservePortfolioDualMAConfig",
     "ReservePortfolioSnapshot",
-    "build_reserve_portfolio_asset_telegram_message",
-    "build_reserve_portfolio_dual_ma_telegram_message",
     "build_reserve_portfolio_signal_records",
     "generate_reserve_portfolio_snapshot",
     "load_reserve_portfolio_dual_ma_config",

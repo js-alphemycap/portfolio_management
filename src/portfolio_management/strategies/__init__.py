@@ -3,8 +3,8 @@
 __all__ = [
     "dual_ma_strategy_core",
     "dual_ma_strategy_reserve_portfolio",
-    "dual_ma_strategy_telegram",
     "sol_eth_rotation_strategy",
     "sol_eth_trade_log",
-    "sol_eth_rotation_strategy_telegram",
+    "hype_eth_rotation_strategy",
+    "hype_eth_trade_log",
 ]
